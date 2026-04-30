@@ -1,0 +1,18 @@
+# Drone physical capabilities
+# All distances in cm, angles in degrees
+
+# Physical dimensions (drone bounding box)
+width=30
+length=30
+height=10
+
+# Maximum distance/angle per single command
+max_rotate=90     # degrees per Rotate command
+max_advance=10    # cm per Advance command
+max_elevate=10    # cm per Elevate command
+
+# Lidar sensor parameters
+lidar_zmin=20     # minimum measurable distance (cm) — closer hits return distance=0
+lidar_zmax=120    # maximum operational range (cm)
+lidar_d=2.5       # circle spacing at Zmin (cm); circle k radius = k * lidar_d at Zmin
+lidar_fovc=5      # number of beam circles (0=central only, 5 => 341 total beams)

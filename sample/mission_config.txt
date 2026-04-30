@@ -1,0 +1,24 @@
+# Mission configuration
+# All distances in cm
+
+# Mapping boundaries
+min_x=0
+max_x=200
+min_y=0
+max_y=200
+min_height=0
+max_height=60
+
+# Resolution: number of decimal places
+#   0 -> 1 cm grid, 1 -> 0.1 cm grid, etc.
+# Keep at 0 for reasonable performance on a large map.
+res_x=0
+res_y=0
+res_height=0
+
+# Optional starting position (cm).
+# If omitted, the Simulator picks the horizontal centre of the
+# map at floor level + half drone height.
+start_x=100
+start_y=100
+start_z=10
