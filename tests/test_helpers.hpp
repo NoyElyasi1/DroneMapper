@@ -20,15 +20,17 @@
 #include <fstream>
 #include <string>
 #include <atomic>
+#include <filesystem>
 
 namespace dm::test {
 
-// ---- Write a string to a unique /tmp file and return its path ----
+// ---- Write a string to a unique temp file and return its path ----
 inline std::string writeTempFile(const std::string& content,
                                   const std::string& suffix = ".txt")
 {
     static std::atomic<int> counter{0};
-    std::string path = "/tmp/dm_test_" + std::to_string(counter++) + suffix;
+    std::filesystem::path dir = std::filesystem::temp_directory_path();
+    std::string path = (dir / ("dm_test_" + std::to_string(counter++) + suffix)).string();
     std::ofstream f(path);
     f << content;
     return path;

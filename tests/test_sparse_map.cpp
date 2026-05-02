@@ -154,7 +154,7 @@ TEST(SparseBuildingMap, LoadFromFile_FileNotFound)
     SparseBuildingMap map;
     std::string errors;
     EXPECT_FALSE(map.loadFromFile(
-        "/tmp/this_really_does_not_exist_999.csv", errors));
+        "this_really_does_not_exist_999.csv", errors));
     EXPECT_FALSE(errors.empty());
     EXPECT_TRUE(map.data().empty());
 }
@@ -164,7 +164,7 @@ TEST(SparseBuildingMap, SaveToFile_InvalidPath_ReturnsFalse)
 {
     SparseBuildingMap map;
     map.setCell({0, 0, 0}, 1);
-    EXPECT_FALSE(map.saveToFile("/no_such_dir/out.csv"));
+    EXPECT_FALSE(map.saveToFile("Z:/no_such_dir/out.csv"));
 }
 
 // ============================================================

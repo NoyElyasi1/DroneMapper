@@ -89,7 +89,7 @@ TEST(DroneConfig, FileNotFound_UsesDefaults)
 {
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig("/tmp/this_file_does_not_exist_abc123.txt", cfg, errors);
+    parseDroneConfig("this_file_does_not_exist_abc123.txt", cfg, errors);
 
     EXPECT_DISTANCE_NEAR(cfg.width, 30.0, 1e-9);  // default
     EXPECT_FALSE(errors.empty());

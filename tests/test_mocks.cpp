@@ -104,6 +104,7 @@ TEST(MovementDriverMock, Rotate_AccumulatesCorrectly)
 TEST(MovementDriverMock, Rotate_NormalisesOver360)
 {
     auto dc = makeDefaultDrone();
+    dc.maxRotate = 360.0 * deg;  // allow large rotations for this test
     auto mc = makeDefaultMission();
     auto [driver, pos] = makeFreeDriver(dc, mc);
 
@@ -111,6 +112,39 @@ TEST(MovementDriverMock, Rotate_NormalisesOver360)
     driver->rotate(20.0 * deg);
     // 350 + 20 = 370 → 10°
     EXPECT_ANGLE_NEAR(pos->getCurrentAngle(), 10.0, 1e-9);
+}
+
+// Rotate exceeding maxRotate is rejected
+TEST(MovementDriverMock, Rotate_ExceedsMax_Rejected)
+{
+    auto dc = makeDefaultDrone();  // maxRotate = 90°
+    auto mc = makeDefaultMission();
+    auto [driver, pos] = makeFreeDriver(dc, mc);
+
+    EXPECT_FALSE(driver->rotate(100.0 * deg));
+    EXPECT_ANGLE_NEAR(pos->getCurrentAngle(), 0.0, 1e-9); // unchanged
+}
+
+// Advance exceeding maxAdvance is rejected
+TEST(MovementDriverMock, Advance_ExceedsMax_Rejected)
+{
+    auto dc = makeDefaultDrone();  // maxAdvance = 20 cm
+    auto mc = makeDefaultMission();
+    auto [driver, pos] = makeFreeDriver(dc, mc);
+
+    EXPECT_FALSE(driver->advance(25.0 * cm));
+    EXPECT_DISTANCE_NEAR(pos->getCurrentPosition().x, 50.0, 1e-6); // unchanged
+}
+
+// Elevate exceeding maxElevate is rejected
+TEST(MovementDriverMock, Elevate_ExceedsMax_Rejected)
+{
+    auto dc = makeDefaultDrone();  // maxElevate = 20 cm
+    auto mc = makeDefaultMission();
+    auto [driver, pos] = makeFreeDriver(dc, mc);
+
+    EXPECT_FALSE(driver->elevate(25.0 * cm));
+    EXPECT_DISTANCE_NEAR(pos->getCurrentPosition().z, 25.0, 1e-6); // unchanged
 }
 
 // Advance east (0°) moves +X

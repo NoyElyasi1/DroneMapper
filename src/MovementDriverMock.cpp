@@ -56,6 +56,10 @@ bool MovementDriverMock::isPositionFree(double cx, double cy, double cz) const
 // ============================================================
 bool MovementDriverMock::rotate(Angle angle)
 {
+    // Enforce max rotation per request
+    if (std::abs(angle.numerical_value_in(deg)) > droneCfg_.maxRotate.numerical_value_in(deg))
+        return false;
+
     const Angle cur = posSensor_->getCurrentAngle();
     const double newVal =
         cur.numerical_value_in(deg) + angle.numerical_value_in(deg);
@@ -70,6 +74,10 @@ bool MovementDriverMock::rotate(Angle angle)
 // ============================================================
 bool MovementDriverMock::advance(Distance dist)
 {
+    // Enforce max advance per request
+    if (std::abs(dist.numerical_value_in(cm)) > droneCfg_.maxAdvance.numerical_value_in(cm))
+        return false;
+
     const Position3D pos      = posSensor_->getCurrentPosition();
     const double     angleRad =
         posSensor_->getCurrentAngle().numerical_value_in(deg) * M_PI / 180.0;
@@ -92,6 +100,10 @@ bool MovementDriverMock::advance(Distance dist)
 // ============================================================
 bool MovementDriverMock::elevate(Distance dist)
 {
+    // Enforce max elevate per request
+    if (std::abs(dist.numerical_value_in(cm)) > droneCfg_.maxElevate.numerical_value_in(cm))
+        return false;
+
     const Position3D pos = posSensor_->getCurrentPosition();
     const double     nx  = pos.x.numerical_value_in(cm);
     const double     ny  = pos.y.numerical_value_in(cm);
