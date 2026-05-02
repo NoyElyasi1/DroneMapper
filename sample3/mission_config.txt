@@ -1,0 +1,17 @@
+# Mission configuration — L-shaped building
+# All distances in cm
+
+min_x=0
+max_x=300
+min_y=0
+max_y=300
+min_height=0
+max_height=80
+
+res_x=0
+res_y=0
+res_height=0
+
+start_x=150
+start_y=75
+start_z=10

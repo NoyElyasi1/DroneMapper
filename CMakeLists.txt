@@ -71,5 +71,5 @@ add_subdirectory(tests)
 #   make -j$(nproc)
 #
 # Run:
-#   ./drone_mapper ../sample
+#   ./drone_mapper ../sample1
 # ============================================================

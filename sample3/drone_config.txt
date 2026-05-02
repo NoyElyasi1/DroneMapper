@@ -1,0 +1,15 @@
+# Drone physical capabilities — L-shaped scenario
+# All distances in cm, angles in degrees
+
+width=30
+length=30
+height=10
+
+max_rotate=90
+max_advance=15
+max_elevate=10
+
+lidar_zmin=20
+lidar_zmax=150
+lidar_d=2.5
+lidar_fovc=5
