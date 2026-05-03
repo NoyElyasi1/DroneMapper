@@ -88,7 +88,7 @@ TEST(SparseBuildingMap, SaveAndLoad_Roundtrip)
     SparseBuildingMap orig;
     orig.setCell({1,  2,  3},  static_cast<int>(CellStatus::Occupied));
     orig.setCell({-5, 0,  10}, static_cast<int>(CellStatus::Empty));
-    orig.setCell({0,  0,  0},  static_cast<int>(CellStatus::UnmappedNA));
+    // UnmappedNA cells are not saved (they are the default for any unset cell)
 
     const std::string path = writeTempFile("", ".csv");
     EXPECT_TRUE(orig.saveToFile(path));
@@ -102,7 +102,8 @@ TEST(SparseBuildingMap, SaveAndLoad_Roundtrip)
               static_cast<int>(CellStatus::Occupied));
     EXPECT_EQ(loaded.getCell({-5, 0, 10}),
               static_cast<int>(CellStatus::Empty));
-    EXPECT_EQ(loaded.getCell({0, 0, 0}),
+    // Unset cell returns UnmappedNA by default
+    EXPECT_EQ(loaded.getCell({99, 99, 99}),
               static_cast<int>(CellStatus::UnmappedNA));
 }
 

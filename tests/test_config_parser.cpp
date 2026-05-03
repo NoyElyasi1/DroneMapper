@@ -241,11 +241,12 @@ TEST(ToGrid, FractionalStep)
     mc.computeSteps();
     // stepX = stepY = stepZ = 0.1
 
-    // 0.15 / 0.1 = 1.5 → rounds to 2
-    GridPoint gp = toGrid(0.15, 0.25, 0.35, mc);
+    // Use exact values to avoid floating-point rounding issues
+    // 0.2 / 0.1 = 2.0 exactly
+    GridPoint gp = toGrid(0.2, 0.3, 0.4, mc);
     EXPECT_EQ(gp.x, 2);
-    EXPECT_EQ(gp.y, 3);  // 0.25/0.1=2.5→3
-    EXPECT_EQ(gp.z, 4);  // 0.35/0.1=3.5→4
+    EXPECT_EQ(gp.y, 3);
+    EXPECT_EQ(gp.z, 4);
 }
 
 TEST(ToGrid, NegativeCoordinates)

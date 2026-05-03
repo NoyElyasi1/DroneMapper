@@ -11,6 +11,7 @@ FetchContent_Declare(
 )
 # Prevent GTest from overriding compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c++26-extensions -Wno-character-conversion")
 FetchContent_MakeAvailable(googletest)
 
 # ---- Shared library of all project source files ----
