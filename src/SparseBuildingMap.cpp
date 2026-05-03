@@ -5,15 +5,57 @@
 
 namespace dm {
 
+// ---- Dense mode initialisation ----
+
+void SparseBuildingMap::initDense(const MissionConfig& mc)
+{
+    dOffX_ = static_cast<int>(std::round(mc.minX      / mc.stepX));
+    dOffY_ = static_cast<int>(std::round(mc.minY      / mc.stepY));
+    dOffZ_ = static_cast<int>(std::round(mc.minHeight / mc.stepZ));
+    dSzX_  = static_cast<int>(std::round((mc.maxX      - mc.minX)      / mc.stepX)) + 1;
+    dSzY_  = static_cast<int>(std::round((mc.maxY      - mc.minY)      / mc.stepY)) + 1;
+    dSzZ_  = static_cast<int>(std::round((mc.maxHeight - mc.minHeight) / mc.stepZ)) + 1;
+
+    const std::size_t total =
+        static_cast<std::size_t>(dSzX_) * dSzY_ * dSzZ_;
+    dense_.assign(total, static_cast<int8_t>(CellStatus::UnmappedNA));
+    isDense_     = true;
+    mappedCount_ = 0;
+}
+
+int SparseBuildingMap::denseIndex(const GridPoint& p) const noexcept
+{
+    const int ix = p.x - dOffX_;
+    const int iy = p.y - dOffY_;
+    const int iz = p.z - dOffZ_;
+    if (ix < 0 || ix >= dSzX_ || iy < 0 || iy >= dSzY_ || iz < 0 || iz >= dSzZ_)
+        return -1;
+    return ix + iy * dSzX_ + iz * dSzX_ * dSzY_;
+}
+
 // ---- Cell access ----
 
 void SparseBuildingMap::setCell(const GridPoint& p, int status)
 {
+    if (isDense_) {
+        const int idx = denseIndex(p);
+        if (idx >= 0) {
+            if (dense_[idx] == static_cast<int8_t>(CellStatus::UnmappedNA))
+                ++mappedCount_;
+            dense_[idx] = static_cast<int8_t>(status);
+        }
+        return;
+    }
     data_[p] = status;
 }
 
 int SparseBuildingMap::getCell(const GridPoint& p) const
 {
+    if (isDense_) {
+        const int idx = denseIndex(p);
+        if (idx >= 0) return static_cast<int>(dense_[idx]);
+        return static_cast<int>(CellStatus::UnmappedNA);
+    }
     const auto it = data_.find(p);
     return (it != data_.end()) ? it->second
                                : static_cast<int>(CellStatus::UnmappedNA);
@@ -21,7 +63,17 @@ int SparseBuildingMap::getCell(const GridPoint& p) const
 
 bool SparseBuildingMap::hasCell(const GridPoint& p) const
 {
+    if (isDense_) {
+        const int idx = denseIndex(p);
+        return idx >= 0 &&
+               dense_[idx] != static_cast<int8_t>(CellStatus::UnmappedNA);
+    }
     return data_.find(p) != data_.end();
+}
+
+std::size_t SparseBuildingMap::mappedCount() const
+{
+    return isDense_ ? mappedCount_ : data_.size();
 }
 
 // ============================================================
@@ -91,8 +143,22 @@ bool SparseBuildingMap::saveToFile(const std::string& filename) const
     if (!file.is_open()) return false;
 
     file << "# x,y,z,status\n";
-    for (const auto& [pt, status] : data_) {
-        file << pt.x << ',' << pt.y << ',' << pt.z << ',' << status << '\n';
+
+    if (isDense_) {
+        for (int iz = 0; iz < dSzZ_; ++iz)
+        for (int iy = 0; iy < dSzY_; ++iy)
+        for (int ix = 0; ix < dSzX_; ++ix) {
+            const int idx    = ix + iy * dSzX_ + iz * dSzX_ * dSzY_;
+            const int status = static_cast<int>(dense_[idx]);
+            if (status != static_cast<int>(CellStatus::UnmappedNA)) {
+                file << (ix + dOffX_) << ',' << (iy + dOffY_) << ','
+                     << (iz + dOffZ_) << ',' << status << '\n';
+            }
+        }
+    } else {
+        for (const auto& [pt, status] : data_) {
+            file << pt.x << ',' << pt.y << ',' << pt.z << ',' << status << '\n';
+        }
     }
     return true;
 }
@@ -129,14 +195,31 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
                                           const MissionConfig& mc) const
 {
     // ---- Component A: occupied recall ----
-    int gtOccupiedTotal    = 0;
+    int gtOccupiedTotal      = 0;
     int droneCorrectOccupied = 0;
 
-    for (const auto& [pt, gtStatus] : groundTruth.data()) {
-        if (gtStatus == static_cast<int>(CellStatus::Occupied)) {
-            ++gtOccupiedTotal;
-            if (getCell(pt) == static_cast<int>(CellStatus::Occupied)) {
-                ++droneCorrectOccupied;
+    if (groundTruth.isDense_) {
+        for (int iz = 0; iz < groundTruth.dSzZ_; ++iz)
+        for (int iy = 0; iy < groundTruth.dSzY_; ++iy)
+        for (int ix = 0; ix < groundTruth.dSzX_; ++ix) {
+            const int idx = ix + iy * groundTruth.dSzX_
+                               + iz * groundTruth.dSzX_ * groundTruth.dSzY_;
+            if (static_cast<int>(groundTruth.dense_[idx]) ==
+                    static_cast<int>(CellStatus::Occupied)) {
+                ++gtOccupiedTotal;
+                const GridPoint pt{ix + groundTruth.dOffX_,
+                                   iy + groundTruth.dOffY_,
+                                   iz + groundTruth.dOffZ_};
+                if (getCell(pt) == static_cast<int>(CellStatus::Occupied))
+                    ++droneCorrectOccupied;
+            }
+        }
+    } else {
+        for (const auto& [pt, gtStatus] : groundTruth.data()) {
+            if (gtStatus == static_cast<int>(CellStatus::Occupied)) {
+                ++gtOccupiedTotal;
+                if (getCell(pt) == static_cast<int>(CellStatus::Occupied))
+                    ++droneCorrectOccupied;
             }
         }
     }
@@ -145,18 +228,37 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
         ? 50.0
         : (50.0 * droneCorrectOccupied / gtOccupiedTotal);
 
-    // ---- Component B: empty precision ----
+    // ---- Component B: empty precision + Component C: coverage ----
     int droneEmptyTotal    = 0;
     int droneEmptyCorrect  = 0;
+    int mappedCells        = 0;
 
-    for (const auto& [pt, myStatus] : data_) {
-        if (myStatus == static_cast<int>(CellStatus::Empty)) {
-            ++droneEmptyTotal;
-            // A cell is "correctly empty" if the ground truth
-            // also has no occupied marker at that position
-            if (groundTruth.getCell(pt) != static_cast<int>(CellStatus::Occupied)) {
-                ++droneEmptyCorrect;
+    if (isDense_) {
+        for (int iz = 0; iz < dSzZ_; ++iz)
+        for (int iy = 0; iy < dSzY_; ++iy)
+        for (int ix = 0; ix < dSzX_; ++ix) {
+            const int idx      = ix + iy * dSzX_ + iz * dSzX_ * dSzY_;
+            const int myStatus = static_cast<int>(dense_[idx]);
+            if (myStatus == static_cast<int>(CellStatus::Empty)) {
+                ++droneEmptyTotal;
+                const GridPoint pt{ix + dOffX_, iy + dOffY_, iz + dOffZ_};
+                if (groundTruth.getCell(pt) != static_cast<int>(CellStatus::Occupied))
+                    ++droneEmptyCorrect;
             }
+            if (myStatus == static_cast<int>(CellStatus::Empty) ||
+                myStatus == static_cast<int>(CellStatus::Occupied))
+                ++mappedCells;
+        }
+    } else {
+        for (const auto& [pt, myStatus] : data_) {
+            if (myStatus == static_cast<int>(CellStatus::Empty)) {
+                ++droneEmptyTotal;
+                if (groundTruth.getCell(pt) != static_cast<int>(CellStatus::Occupied))
+                    ++droneEmptyCorrect;
+            }
+            if (myStatus == static_cast<int>(CellStatus::Empty) ||
+                myStatus == static_cast<int>(CellStatus::Occupied))
+                ++mappedCells;
         }
     }
 
@@ -173,15 +275,6 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
     const long long zCells = static_cast<long long>(
         std::round((mc.maxHeight - mc.minHeight) / mc.stepZ)) + 1;
     const long long totalCells = xCells * yCells * zCells;
-
-    // Count cells drone has mapped (either empty or occupied)
-    int mappedCells = 0;
-    for (const auto& [pt, myStatus] : data_) {
-        if (myStatus == static_cast<int>(CellStatus::Empty) ||
-            myStatus == static_cast<int>(CellStatus::Occupied)) {
-            ++mappedCells;
-        }
-    }
 
     const double scoreC = (totalCells <= 0)
         ? 0.0

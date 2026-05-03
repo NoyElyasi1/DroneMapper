@@ -29,7 +29,7 @@ using namespace mp_units::si::unit_symbols;
 
 // Strong quantity types
 using Distance = mp_units::quantity<mp_units::si::centi<mp_units::si::metre>, double>;
-using Angle    = mp_units::quantity<mp_units::angular::degree, double>;
+using Angle    = mp_units::quantity<mp_units::non_si::degree, double>;
 
 // ============================================================
 // GridPoint — 3D integer voxel index.

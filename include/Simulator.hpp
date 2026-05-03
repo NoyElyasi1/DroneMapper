@@ -9,7 +9,7 @@
 //   3. Place the drone at its starting position (validated against
 //      ground truth to avoid starting inside a wall)
 //   4. Run the main loop: call drone.performStep() until done
-//   5. Write map_output.txt
+//   5. Write output_map.txt
 //   6. Calculate and print the mapping score
 //   7. Write input_errors.txt if any recoverable errors occurred
 //

@@ -15,7 +15,12 @@ Drone::Drone(std::shared_ptr<IPositionSensor> posSensor,
     , driver_(std::move(driver))
     , droneCfg_(droneCfg)
     , missionCfg_(missionCfg)
-{}
+{
+    // Use dense flat-array storage for the result map so that the
+    // hot-path getCell/setCell in processScan is O(1) array access
+    // (~3 ns) rather than unordered_map lookup (~100 ns).
+    resultMap_.initDense(missionCfg_);
+}
 
 // ============================================================
 // processScan — update the drone's internal map from scan results.
@@ -131,14 +136,23 @@ void Drone::scanAllDirections()
 bool Drone::findFrontierNeighbour(const GridPoint& current,
                                    GridPoint& target) const
 {
+    // Navigation step in grid cells — align with hardware limits so the
+    // drone jumps ~maxAdvance cm per DFS hop rather than 1 cm at a time.
+    // With a 120 cm lidar range, visiting every maxAdvance cm is sufficient
+    // to scan the full space, giving a ~(maxAdvance/stepX)^3 speedup.
+    const int navXY = std::max(1, static_cast<int>(std::round(
+        droneCfg_.maxAdvance.numerical_value_in(cm) / missionCfg_.stepX)));
+    const int navZ  = std::max(1, static_cast<int>(std::round(
+        droneCfg_.maxElevate.numerical_value_in(cm) / missionCfg_.stepZ)));
+
     // 6 cardinal directions in grid space
-    constexpr int DIRS[6][3] = {
-        { 1,  0,  0},  // East
-        {-1,  0,  0},  // West
-        { 0,  1,  0},  // South
-        { 0, -1,  0},  // North
-        { 0,  0,  1},  // Up
-        { 0,  0, -1}   // Down
+    const int DIRS[6][3] = {
+        { navXY,     0,    0},  // East
+        {-navXY,     0,    0},  // West
+        {     0,  navXY,   0},  // South
+        {     0, -navXY,   0},  // North
+        {     0,     0,  navZ}, // Up
+        {     0,     0, -navZ}  // Down
     };
 
     for (const auto& d : DIRS) {

@@ -23,6 +23,7 @@
 #include "Types.hpp"
 #include "ConfigParser.hpp"
 #include <unordered_map>
+#include <vector>
 #include <string>
 
 namespace dm {
@@ -30,6 +31,11 @@ namespace dm {
 class SparseBuildingMap {
 public:
     SparseBuildingMap() = default;
+
+    // Enable dense flat-array storage for a known bounded space.
+    // Must be called before any setCell/getCell if dense mode is desired.
+    // Reduces hot-path lookup from ~100ns (hash) to ~3ns (array index).
+    void initDense(const MissionConfig& mc);
 
     // ---- Cell access ----
 
@@ -40,6 +46,9 @@ public:
 
     // True if the cell has been written at least once.
     bool hasCell(const GridPoint& p) const;
+
+    // Number of cells that have been written (empty or occupied).
+    std::size_t mappedCount() const;
 
     // ---- File I/O ----
 
@@ -71,7 +80,18 @@ public:
     }
 
 private:
+    // --- Sparse storage (default, used for ground-truth map) ---
     std::unordered_map<GridPoint, int, GridPointHash> data_;
+
+    // --- Dense storage (opt-in via initDense, used for result map) ---
+    bool isDense_ = false;
+    std::vector<int8_t> dense_;
+    int dOffX_ = 0, dOffY_ = 0, dOffZ_ = 0;
+    int dSzX_  = 0, dSzY_  = 0, dSzZ_  = 0;
+    std::size_t mappedCount_ = 0;
+
+    // Returns flat index into dense_, or -1 if out of bounds.
+    int denseIndex(const GridPoint& p) const noexcept;
 };
 
 } // namespace dm

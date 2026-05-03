@@ -20,13 +20,18 @@ bool Simulator::loadAll(const std::string& basePath)
     parseDroneConfig  (basePath + "/drone_config.txt",   droneCfg_,   errors_);
     parseMissionConfig(basePath + "/mission_config.txt", missionCfg_, errors_);
 
+    // Use dense flat-array storage for the ground-truth map so that
+    // LidarMock's castRay inner loop hits array indices (~3 ns) instead
+    // of unordered_map lookups (~100 ns).
+    groundTruth_.initDense(missionCfg_);
+
     if (!groundTruth_.loadFromFile(basePath + "/map_input.txt", errors_)) {
         std::cerr << "[Simulator] FATAL: cannot load ground-truth map ("
                   << basePath << "/map_input.txt)\n";
         return false;
     }
 
-    if (groundTruth_.data().empty()) {
+    if (groundTruth_.mappedCount() == 0) {
         errors_ += "[Simulator] Warning: ground-truth map is empty.\n";
     }
 
@@ -112,15 +117,14 @@ int Simulator::run(const std::string& basePath)
     while (drone.performStep()) {
         ++steps;
         if (steps % 10000 == 0) {
-            const auto& mapData = drone.getMap().data();
             std::cout << "[Simulator] Step " << steps
-                      << " — cells mapped: " << mapData.size() << "\n";
+                      << " — cells mapped: " << drone.getMap().mappedCount() << "\n";
         }
     }
     std::cout << "[Simulator] Mapping complete after " << steps << " steps.\n";
 
     // ---- 5. Write output map ----
-    const std::string outPath = basePath + "/map_output.txt";
+    const std::string outPath = basePath + "/output_map.txt";
     if (!drone.getMap().saveToFile(outPath)) {
         std::cerr << "[Simulator] Warning: could not write " << outPath << "\n";
     } else {
