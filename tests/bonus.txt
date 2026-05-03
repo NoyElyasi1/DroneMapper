@@ -1,0 +1,35 @@
+Bonus Additions
+===============
+
+1. Automatic Testing with GTest
+--------------------------------
+The project includes a comprehensive automated test suite using Google Test (GTest),
+located in the tests/ directory.
+
+Test files:
+  - tests/test_config_parser.cpp  — 17 tests for DroneConfig, MissionConfig, toGrid()
+  - tests/test_sparse_map.cpp     — 17 tests for SparseBuildingMap (cell access, file I/O, scoring)
+  - tests/test_mocks.cpp          — 25 tests for PositionSensorMock, MovementDriverMock, LidarMock
+  - tests/test_drone.cpp          —  7 tests for the Drone algorithm (unit + integration)
+
+Total: 66 automated tests, all passing.
+
+How to run:
+  mkdir build && cd build
+  cmake .. -DCMAKE_BUILD_TYPE=Release
+  # On Apple Clang (Mac), also run:
+  sed -i '' 's/-Wall -Wextra -Werror -pedantic/-Wall -Wextra -Werror -pedantic -Wno-c++26-extensions/' ../CMakeLists.txt
+  sed -i '' 's/set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)/set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)\nset(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c++26-extensions -Wno-character-conversion")/' ../tests/CMakeLists.txt
+  make -j4
+  ctest --output-on-failure
+
+Coverage summary:
+  - Config parsing: valid files, missing keys, bad values, inline comments,
+    file not found, inverted lidar range, FOVC clamping, Windows line endings,
+    partial/missing start position, negative resolution.
+  - SparseBuildingMap: get/set/overwrite cells, negative indices, file roundtrip,
+    bad/comment lines, invalid path, score formula correctness.
+  - Mocks: position and angle normalisation, rotate/advance/elevate with collision
+    detection, lidar beam count, unit vector validation, Zmin/Zmax behaviour.
+  - Drone: first step marks cell empty, wall detection, beam path marking,
+    termination in enclosed room, obstacle everywhere, integration score > threshold.
