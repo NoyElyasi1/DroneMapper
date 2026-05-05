@@ -3,8 +3,21 @@ Bonus Additions
 
 1. Automatic Testing with GTest
 --------------------------------
-The project includes a comprehensive automated test suite using Google Test (GTest),
-located in the tests/ directory.
+External Library: Google Test (GTest) v1.14.0
+  Repository : https://github.com/google/googletest
+  License    : BSD 3-Clause
+  Approval   : Received forum approval for use in the bonus test suite only.
+               Fetched automatically via CMake FetchContent; NOT linked into
+               the main drone_mapper executable.
+
+Usage:
+  - TEST(Suite, Name) macros define isolated test cases across four test files.
+  - EXPECT_EQ / EXPECT_TRUE / EXPECT_NEAR / EXPECT_THROW macros assert
+    correctness; non-fatal so all failures in a test are reported together.
+  - GTest::gtest_main provides main(); gtest_discover_tests() registers each
+    binary with CTest for "ctest --output-on-failure" execution.
+
+The project includes a comprehensive automated test suite located in tests/.
 
 Test files:
   - tests/test_config_parser.cpp  — 17 tests for DroneConfig, MissionConfig, toGrid()
@@ -17,9 +30,6 @@ Total: 66 automated tests, all passing.
 How to run:
   mkdir build && cd build
   cmake .. -DCMAKE_BUILD_TYPE=Release
-  # On Apple Clang (Mac), also run:
-  sed -i '' 's/-Wall -Wextra -Werror -pedantic/-Wall -Wextra -Werror -pedantic -Wno-c++26-extensions/' ../CMakeLists.txt
-  sed -i '' 's/set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)/set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)\nset(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c++26-extensions -Wno-character-conversion")/' ../tests/CMakeLists.txt
   make -j4
   ctest --output-on-failure
 
