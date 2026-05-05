@@ -12,7 +12,7 @@
 //   <path>/map_input.txt
 //
 // And writes:
-//   <path>/output_map.txt
+//   <path>/map_output.txt
 //   <path>/input_errors.txt  (only if recoverable errors occurred)
 //
 // The program NEVER calls exit() or abort(); all control flow

@@ -124,7 +124,7 @@ int Simulator::run(const std::string& basePath)
     std::cout << "[Simulator] Mapping complete after " << steps << " steps.\n";
 
     // ---- 5. Write output map ----
-    const std::string outPath = basePath + "/output_map.txt";
+    const std::string outPath = basePath + "/map_output.txt";
     if (!drone.getMap().saveToFile(outPath)) {
         std::cerr << "[Simulator] Warning: could not write " << outPath << "\n";
     } else {

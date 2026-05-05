@@ -12,7 +12,7 @@
 //  -1  = unmapped   (not yet reached / unreachable)
 //  -2  = out of bounds
 //
-// File format (map_input.txt / output_map.txt):
+// File format (map_input.txt / map_output.txt):
 //   # x,y,z,status          <- comment line
 //   -10,0,5,1               <- grid-index row
 //   ...

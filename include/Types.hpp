@@ -6,9 +6,6 @@
 // Design decisions:
 //   - All physical quantities use lightweight custom unit wrappers
 //     to prevent unit-mismatch bugs at compile time.
-//     (mp-units v2.4.0 triggers an ICE in GCC 11.4, so we use a
-//      minimal self-contained replacement that keeps every call
-//      site identical.)
 //   - Distances are in centimetres, angles in degrees.
 //   - GridPoint uses integer indices derived from the mission
 //     resolution, so all map look-ups are exact (no floating-point
@@ -23,12 +20,11 @@
 
 namespace dm {
 
-// ---- Minimal unit-safe quantity types (GCC 11.4 compatible) ----
+// ---- Minimal unit-safe quantity types ----
 //
-// Every call site that worked with mp-units works unchanged:
 //   double * cm  →  Distance
 //   double * deg →  Angle
-//   qty.numerical_value_in(cm)  → double  (always the native unit)
+//   qty.numerical_value_in(cm)  → double
 //   qty.numerical_value_in(deg) → double
 
 struct cm_unit  {};   ///< Unit token for centimetres

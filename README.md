@@ -52,7 +52,7 @@ x,y,z,status
 
 ## Output File
 
-### `output_map.txt`
+### `map_output.txt`
 Written to the same directory as the input files. Same CSV format as `map_input.txt`:
 ```
 x,y,z,status

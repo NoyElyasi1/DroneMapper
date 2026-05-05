@@ -13,6 +13,7 @@
 
 #include "Interfaces.hpp"
 #include "Types.hpp"
+#include <cmath>
 
 namespace dm {
 
