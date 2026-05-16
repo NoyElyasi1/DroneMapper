@@ -4,7 +4,7 @@
 // Types.hpp — Core types and units for the DroneMapper project.
 //
 // Design decisions:
-//   - All physical quantities use lightweight custom unit wrappers
+//   - All physical quantities use the mp-units library (C++23 style)
 //     to prevent unit-mismatch bugs at compile time.
 //   - Distances are in centimetres, angles in degrees.
 //   - GridPoint uses integer indices derived from the mission
@@ -15,45 +15,21 @@
 //     computes directions — it just traces along (dx, dy, dz).
 // ============================================================
 
+#include <mp-units/systems/si.h>
+#include <mp-units/systems/angular.h>
+#include <mp-units/framework.h>
 #include <cstddef>
 #include <functional>
 
 namespace dm {
 
-// ---- Minimal unit-safe quantity types ----
-//
-//   double * cm  →  Distance
-//   double * deg →  Angle
-//   qty.numerical_value_in(cm)  → double
-//   qty.numerical_value_in(deg) → double
+// -- Unit aliases (used everywhere in the project) --
+using namespace mp_units;
+using namespace mp_units::si::unit_symbols;
 
-struct cm_unit  {};   ///< Unit token for centimetres
-struct deg_unit {};   ///< Unit token for degrees
-
-inline constexpr cm_unit  cm{};
-inline constexpr deg_unit deg{};
-
-class Distance {
-public:
-    Distance() = default;
-    explicit Distance(double v) noexcept : val_(v) {}
-    [[nodiscard]] double numerical_value_in(cm_unit) const noexcept { return val_; }
-private:
-    double val_ = 0.0;
-};
-
-class Angle {
-public:
-    Angle() = default;
-    explicit Angle(double v) noexcept : val_(v) {}
-    [[nodiscard]] double numerical_value_in(deg_unit) const noexcept { return val_; }
-private:
-    double val_ = 0.0;
-};
-
-/// Construction: 5.0 * cm → Distance,  90.0 * deg → Angle
-inline Distance operator*(double v, cm_unit)  noexcept { return Distance{v}; }
-inline Angle    operator*(double v, deg_unit) noexcept { return Angle{v};    }
+// Strong quantity types
+using Distance = mp_units::quantity<mp_units::si::centi<mp_units::si::metre>, double>;
+using Angle    = mp_units::quantity<mp_units::non_si::degree, double>;
 
 // ============================================================
 // GridPoint — 3D integer voxel index.

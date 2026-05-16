@@ -12,13 +12,32 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
     add_compile_options(/W4 /WX)
 else()
-    add_compile_options(-Wall -Wextra -Werror -pedantic)
+    add_compile_options(-Wall -Wextra -Werror -pedantic -Wno-c++26-extensions)
 endif()
 
 # ============================================================
-# Main executable -
-# No external libraries — all unit types are self-contained in
-# include/Types.hpp using standard C++20 only.
+# Fetch mp-units — strong-typed unit library
+# https://github.com/mpusz/mp-units
+# ============================================================
+include(FetchContent)
+
+FetchContent_Declare(
+    gsl-lite
+    GIT_REPOSITORY https://github.com/gsl-lite/gsl-lite.git
+    GIT_TAG        v0.41.0
+)
+FetchContent_MakeAvailable(gsl-lite)
+
+FetchContent_Declare(
+    mp-units
+    GIT_REPOSITORY https://github.com/mpusz/mp-units.git
+    GIT_TAG        v2.4.0
+    SOURCE_SUBDIR  src
+)
+FetchContent_MakeAvailable(mp-units)
+
+# ============================================================
+# Main executable - 
 # ============================================================
 add_executable(drone_mapper
     src/main.cpp
@@ -35,7 +54,9 @@ target_include_directories(drone_mapper PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# No external link dependencies for the main executable.
+target_link_libraries(drone_mapper PRIVATE
+    mp-units::mp-units
+)
 
 # ============================================================
 # Tests
