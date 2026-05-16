@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DroneMapper — High Level Design Document</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #222;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  .header-banner {
+    background: #3b6fa0;
+    color: white;
+    text-align: center;
+    padding: 30px 20px 20px;
+    margin-bottom: 30px;
+    border-radius: 4px;
+  }
+  .header-banner h1 { margin: 0; font-size: 2.2em; font-style: italic; }
+  .header-banner h2 { margin: 5px 0; font-size: 1.2em; font-weight: normal; font-style: italic; }
+  .header-banner .authors { margin-top: 10px; font-size: 1em; }
+  h1 { color: #2c5282; border-bottom: 2px solid #2c5282; padding-bottom: 6px; }
+  h2 { color: #2c5282; border-bottom: 1px solid #cbd5e0; padding-bottom: 4px; margin-top: 30px; }
+  h3 { color: #2d3748; margin-top: 20px; }
+  h4 { color: #2d3748; margin-top: 15px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 0.93em; }
+  th { background: #edf2f7; }
+  code, pre { font-family: Consolas, 'Courier New', monospace; }
+  pre { background: #f7fafc; border: 1px solid #e2e8f0; padding: 10px; overflow-x: auto; font-size: 0.88em; }
+  code { background: #edf2f7; padding: 1px 4px; border-radius: 3px; font-size: 0.93em; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  .page-break { page-break-before: always; }
+  .footer { text-align: center; color: #888; font-size: 0.85em; margin-top: 40px; border-top: 1px solid #ddd; padding-top: 8px; }
+  .uml-diagram { text-align: center; margin: 15px 0; }
+  .uml-diagram img { max-width: 100%; }
+  .diagram-box {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    padding: 12px;
+    margin: 12px 0;
+    font-family: Consolas, monospace;
+    font-size: 0.85em;
+    white-space: pre;
+    overflow-x: auto;
+    line-height: 1.35;
+  }
+</style>
+</head>
+<body>
+
+<div class="header-banner">
+  <h1>DroneMapper</h1>
+  <h2>High Level Design Document</h2>
+  <div class="authors">Roni Hagai (324207257) &nbsp;|&nbsp; Noy Elyasi (315659201)</div>
+</div>
+
+<!-- ============================================================ -->
+<h1>1. Overview</h1>
+
+<p>DroneMapper is an autonomous 3D indoor-mapping simulation written in C++20. A virtual drone navigates a
+user-supplied voxel building model, fires a cone-beam Lidar sensor at each position, and constructs an internal
+occupancy map that is written to disk when exploration finishes. The final score measures how accurately the drone
+reconstructed the ground-truth map.</p>
+
+<!-- ============================================================ -->
+<h1>2. High-Level Architecture</h1>
+
+<p>The system is divided into five layers. Each layer communicates only with its immediate neighbours through well-defined
+interfaces, enabling independent testing of every component.</p>
+
+<table>
+<tr><th>Layer</th><th>Component</th><th>Responsibility</th></tr>
+<tr><td><b>Entry Point</b></td><td><code>main.cpp</code></td><td>Parses CLI args, delegates to Simulator</td></tr>
+<tr><td><b>Orchestrator</b></td><td><code>Simulator</code></td><td>Loads config &amp; map, wires mocks, drives main loop, writes output</td></tr>
+<tr><td><b>Algorithm</b></td><td><code>Drone</code></td><td>DFS exploration, scan processing, navigation planning</td></tr>
+<tr><td><b>Abstractions</b></td><td><code>IPositionSensor / ILidarSensor / IMovementDriver</code></td><td>Pure interfaces &mdash; Drone depends only on these</td></tr>
+<tr><td><b>Simulation Layer</b></td><td><code>PositionSensorMock / LidarMock / MovementDriverMock</code></td><td>Concrete mock implementations injected by Simulator</td></tr>
+<tr><td><b>Data / Config</b></td><td><code>SparseBuildingMap / ConfigParser / Types</code></td><td>Shared data structures, file I/O, unit types</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h1>3. UML Class Diagram</h1>
+
+<div class="diagram-box">
+                          ┌──────────────┐
+                          │  Simulator   │
+                          │──────────────│
+                          │ + run()      │
+                          └──────┬───────┘
+                                 │ creates &amp; injects
+          ┌──────────────────────┼──────────────────────┐
+          ▼                      ▼                      ▼
+  ┌───────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │PositionSensor │   │  MovementDriver  │   │   LidarMock      │
+  │    Mock       │   │      Mock        │   │                  │
+  │───────────────│   │──────────────────│   │──────────────────│
+  │+getPosition() │   │ +rotate()        │   │ +scan()          │
+  │+getAngle()    │   │ +advance()       │   └────────┬─────────┘
+  │+setPosition() │   │ +elevate()       │            │
+  │+setAngle()    │   └────────┬─────────┘            │
+  └───────┬───────┘            │                      │
+          │ implements         │ implements            │ implements
+          ▼                    ▼                       ▼
+  «interface»           «interface»            «interface»
+  ┌───────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │IPositionSensor│   │IMovementDriver   │   │  ILidarSensor    │
+  │───────────────│   │──────────────────│   │──────────────────│
+  │+getPosition() │   │ +rotate(Angle)   │   │+scan(Angle,Angle)│
+  │+getAngle()    │   │ +advance(Dist)   │   └──────────────────┘
+  └───────────────┘   │ +elevate(Dist)   │            ▲
+          ▲            └──────────────────┘            │
+          │                     ▲                      │
+          └─────────────────────┼──────────────────────┘
+                          depends on
+                    ┌────────────────┐
+                    │     Drone      │
+                    │────────────────│
+                    │ - visited_     │
+                    │ - backtrackStack_│
+                    │ - resultMap_   │
+                    │────────────────│
+                    │ + performStep()│
+                    │ + getMap()     │
+                    └────────────────┘
+
+  ┌─────────────────┐  ┌──────────────┐  ┌──────────────────┐
+  │SparseBuildingMap │  │ ConfigParser │  │ Types (mp-units) │
+  │─────────────────│  │──────────────│  │──────────────────│
+  │ +setCell()      │  │ parseDrone   │  │ Distance         │
+  │ +getCell()      │  │  Config()    │  │ Angle            │
+  │ +loadFromFile() │  │ parseMission │  │ Position3D       │
+  │ +saveToFile()   │  │  Config()    │  │ GridPoint        │
+  │ +calculateScore │  │ toGrid()     │  │ ScanResult       │
+  └─────────────────┘  └──────────────┘  └──────────────────┘
+</div>
+
+<p><b>Key relationships:</b></p>
+<ul>
+  <li><b>Drone → Interfaces:</b> Drone depends <em>only</em> on the three abstract interfaces (Dependency Inversion Principle).</li>
+  <li><b>Mocks → Interfaces:</b> Each Mock implements exactly one interface.</li>
+  <li><b>Simulator → All:</b> Simulator is the composition root — it creates all objects and wires dependencies.</li>
+  <li><b>PositionSensorMock:</b> Shared by LidarMock and MovementDriverMock via <code>shared_ptr</code>.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h1>4. UML Sequence Diagram — Main Flow</h1>
+
+<div class="diagram-box">
+  Simulator          Drone           LidarMock      MovementDriverMock  PositionSensorMock  SparseBuildingMap
+     │                 │                 │                 │                  │                  │
+     │ performStep()   │                 │                 │                  │                  │
+     │────────────────►│                 │                 │                  │                  │
+     │                 │                 │                 │                  │                  │
+     │                 │ scan(xy, elev)  │                 │                  │                  │
+     │                 │────────────────►│                 │                  │                  │
+     │                 │                 │ getPosition()   │                  │                  │
+     │                 │                 │ getAngle()      │                  │                  │
+     │                 │                 │────────────────────────────────────►│                  │
+     │                 │                 │◄───── pos, angle ─────────────────│                  │
+     │                 │                 │ castRay() × N   │                  │                  │
+     │                 │                 │─────────────────────────────────────────────────────►│
+     │                 │                 │◄──────────────────────────────────────── cell status │
+     │                 │◄── ScanResults ─│                 │                  │                  │
+     │                 │                 │                 │                  │                  │
+     │                 │ setCell(Empty/Occupied) ──────────────────────────────────────────────►│
+     │                 │                 │                 │                  │                  │
+     │                 │ rotate(angle)   │                 │                  │                  │
+     │                 │────────────────────────────────►│  │                  │                  │
+     │                 │                 │                 │ setAngle()       │                  │
+     │                 │                 │                 │─────────────────►│                  │
+     │                 │ advance(dist)   │                 │                  │                  │
+     │                 │────────────────────────────────►│  │                  │                  │
+     │                 │                 │                 │ isPositionFree() │                  │
+     │                 │                 │                 │──────────────────────────────────►│
+     │                 │                 │                 │ setPosition()    │                  │
+     │                 │                 │                 │─────────────────►│                  │
+     │                 │◄── true/false ──────────────────│                  │                  │
+     │◄── true ────────│                 │                 │                  │                  │
+     │                 │                 │                 │                  │                  │
+     │ [loop ends when performStep() returns false]       │                  │                  │
+     │                 │                 │                 │                  │                  │
+     │ saveToFile("map_output.txt") ──────────────────────────────────────────────────────────►│
+     │ calculateScore() ──────────────────────────────────────────────────────────────────────►│
+     │                 │                 │                 │                  │                  │
+</div>
+
+<!-- ============================================================ -->
+<h1>5. Component Descriptions</h1>
+
+<h2>5.1 main.cpp — Entry Point</h2>
+<p>Reads the optional command-line argument (base directory path). Constructs a Simulator, calls <code>Simulator::run()</code>, and
+propagates its return code. No application logic lives here.</p>
+<pre>int main(int argc, char* argv[]) {
+    const std::string basePath = (argc &gt; 1) ? argv[1] : ".";
+    dm::Simulator sim;
+    return sim.run(basePath);
+}</pre>
+
+<h2>5.2 Simulator — Orchestrator</h2>
+<p>Owns the simulation lifecycle in seven sequential steps:</p>
+<ul>
+  <li>Load <code>drone_config.txt</code>, <code>mission_config.txt</code>, <code>map_input.txt</code> via ConfigParser.</li>
+  <li>Construct <code>shared_ptr</code>s to the ground-truth SparseBuildingMap.</li>
+  <li>Construct PositionSensorMock, MovementDriverMock, LidarMock — injecting them into the Drone via the three abstract interfaces.</li>
+  <li>Validate &amp; set the starting position (aborts if inside a wall).</li>
+  <li>Drive the main loop: call <code>Drone::performStep()</code> until it returns false.</li>
+  <li>Write <code>map_output.txt</code>.</li>
+  <li>Compute and print the 0–100 mapping score; write <code>input_errors.txt</code> if needed.</li>
+</ul>
+
+<h2>5.3 Drone — Exploration Algorithm</h2>
+<p>Implements a deterministic depth-first search (DFS) over the 3D voxel grid. The drone communicates with the
+simulation only through the three abstract interfaces — it is completely unaware of the mock implementations.</p>
+
+<h3>State</h3>
+<ul>
+  <li><code>visited_</code> — <code>std::unordered_set&lt;GridPoint&gt;</code>: prevents revisiting cells.</li>
+  <li><code>backtrackStack_</code> — <code>std::stack&lt;GridPoint&gt;</code>: DFS return path.</li>
+  <li><code>resultMap_</code> — SparseBuildingMap (dense): the drone's own occupancy map.</li>
+</ul>
+
+<h3>performStep() — one iteration of the main loop</h3>
+<ul>
+  <li><b>SCAN:</b> Fire Lidar in 10 directions (8 horizontal azimuths 45° apart + straight up + straight down). <code>processScan()</code> updates <code>resultMap_</code>.</li>
+  <li><b>FIND FRONTIER:</b> Check 6 orthogonal neighbours (±X, ±Y, ±Z) for an unvisited, non-occupied, in-bounds cell.</li>
+  <li><b>MOVE:</b> Push current position, call <code>navigateTo()</code>. If navigation fails, mark the target occupied and do not push.</li>
+  <li><b>BACKTRACK:</b> If no frontier, pop the stack and return to the previous cell. If the stack is empty, return false (done).</li>
+</ul>
+
+<h3>navigateTo() — straight-line navigation</h3>
+<ul>
+  <li>Elevate to the target Z in sub-steps &le; <code>maxElevate</code>.</li>
+  <li>Rotate to face the target XY direction; advance in sub-steps &le; <code>maxAdvance</code>.</li>
+  <li>Return false immediately on the first blocked sub-step.</li>
+</ul>
+
+<h3>scanAllDirections() + processScan()</h3>
+<ul>
+  <li>Each Lidar scan returns a vector of <code>ScanResult{dx, dy, dz, distance}</code>.</li>
+  <li>For each beam: march along (dx,dy,dz) marking voxels Empty until the hit; mark the hit voxel Occupied. Occupied cells are never overwritten with Empty.</li>
+  <li>The drone's own current voxel is always marked Empty.</li>
+</ul>
+
+<h2>5.4 Abstract Interfaces (Interfaces.hpp)</h2>
+<p>The Drone depends on exactly three pure abstract classes, enabling full dependency inversion (DIP):</p>
+<ul>
+  <li><code>IPositionSensor</code> — <code>getCurrentPosition()</code> → <code>Position3D</code>, <code>getCurrentAngle()</code> → <code>Angle</code>.</li>
+  <li><code>IMovementDriver</code> — <code>rotate(Angle)</code>, <code>advance(Distance)</code>, <code>elevate(Distance)</code> → <code>bool</code>.</li>
+  <li><code>ILidarSensor</code> — <code>scan(xyOffset, elevationAngle)</code> → <code>vector&lt;ScanResult&gt;</code>.</li>
+</ul>
+
+<h2>5.5 Mock Implementations</h2>
+
+<h3>PositionSensorMock</h3>
+<p>Stores the drone's exact (cx, cy, cz) world-space position and XY heading. Both LidarMock and
+MovementDriverMock hold a <code>shared_ptr</code> to this object — the driver writes to it, the sensor reads from it.</p>
+
+<h3>MovementDriverMock</h3>
+<p>Applies rotate/advance/elevate to the PositionSensorMock state. Before every move it calls <code>isPositionFree()</code>, which
+samples the drone's bounding box corners at the proposed new location and rejects the move if any sample is Occupied
+in the ground-truth map or outside mission bounds.</p>
+
+<h3>LidarMock</h3>
+<p>Computes all beam directions for the full FOVC cone (circle k has 4<sup>k</sup> beams, half-angle = atan(k·D / Zmin)). Each
+beam is ray-marched through the ground-truth map in steps of min(stepX, stepY, stepZ). Returns:</p>
+<ul>
+  <li><code>0 * cm</code> — hit detected but closer than Zmin (too close).</li>
+  <li><code>t * cm</code> — distance to first occupied voxel (Zmin ≤ t ≤ Zmax).</li>
+  <li><code>Zmax * cm</code> — no obstacle detected within range.</li>
+</ul>
+
+<h2>5.6 SparseBuildingMap — 3D Occupancy Grid</h2>
+<p>Two storage modes selected at construction time:</p>
+<ul>
+  <li><b>Sparse mode</b> (ground truth loaded from file): <code>std::unordered_map&lt;GridPoint, int&gt;</code> — only stores non-empty cells.</li>
+  <li><b>Dense mode</b> (drone's result map, chosen for speed): a contiguous <code>std::vector&lt;int&gt;</code> pre-allocated for the full
+  mission volume — O(1) array access vs. O(1) average hash-map but with lower constant factor (≈3 ns vs. ≈100 ns per lookup).</li>
+</ul>
+
+<p>Cell values follow the <code>CellStatus</code> enum:</p>
+<table>
+<tr><th>Value</th><th>Name</th><th>Meaning</th></tr>
+<tr><td>0</td><td>Empty</td><td>Scanned, confirmed open</td></tr>
+<tr><td>1</td><td>Occupied</td><td>Scanned, confirmed solid</td></tr>
+<tr><td>-1</td><td>UnmappedNA</td><td>Within bounds but not yet reached</td></tr>
+<tr><td>-2</td><td>UnmappedOOB</td><td>Outside mission boundary</td></tr>
+</table>
+
+<p>File I/O: CSV format <code>(x,y,z,status)</code> with '#'-prefixed comment lines. Grid indices are integers: <code>continuous_coord / step_size</code> (rounded).</p>
+
+<h2>5.7 ConfigParser</h2>
+<p>Reads key=value text files. Rules: '#' lines are comments; inline '#' comments stripped; Windows CR+LF handled;
+duplicate keys: last wins; bad or missing values produce logged defaults and never abort parsing.</p>
+<p>Parses three structs:</p>
+<ul>
+  <li><code>DroneConfig</code> — physical capabilities (dimensions, max move, Lidar params).</li>
+  <li><code>MissionConfig</code> — spatial boundaries, grid resolution, start pose.</li>
+  <li>Ground-truth map — via <code>SparseBuildingMap::loadFromFile()</code>.</li>
+</ul>
+
+<h2>5.8 Types.hpp — Strong-Typed Units (mp-units)</h2>
+<p>All physical quantities use the <b>mp-units</b> library (v2.4.0) to enforce unit safety at compile time.
+The library is fetched automatically via CMake <code>FetchContent</code>.</p>
+<p>Two strong quantity type aliases are defined:</p>
+<pre>using namespace mp_units;
+using namespace mp_units::si::unit_symbols;   // cm, m, deg, ...
+
+using Distance = mp_units::quantity&lt;mp_units::si::centi&lt;mp_units::si::metre&gt;, double&gt;;
+using Angle    = mp_units::quantity&lt;mp_units::non_si::degree, double&gt;;</pre>
+<ul>
+  <li><b>Construction:</b> <code>5.0 * cm</code> → <code>Distance</code>, &nbsp; <code>90.0 * deg</code> → <code>Angle</code></li>
+  <li><b>Extraction:</b> <code>qty.numerical_value_in(cm)</code> / <code>qty.numerical_value_in(deg)</code> → <code>double</code></li>
+</ul>
+<p>In input and output files: angles are in degrees (0–360), distance/length values are in cm. Raw doubles are used
+only at the I/O boundary (file reading/writing); all internal APIs and data members use the strongly-typed quantities.</p>
+
+<!-- ============================================================ -->
+<h1>6. File I/O Summary</h1>
+
+<table>
+<tr><th>Direction</th><th>File</th><th>Description</th></tr>
+<tr><td>Input</td><td><code>drone_config.txt</code></td><td>Key=value. Physical drone parameters.</td></tr>
+<tr><td>Input</td><td><code>mission_config.txt</code></td><td>Key=value. Mission bounds, resolution, start pose.</td></tr>
+<tr><td>Input</td><td><code>map_input.txt</code></td><td>CSV (x,y,z,status). Ground-truth occupancy grid.</td></tr>
+<tr><td>Output</td><td><code>map_output.txt</code></td><td>CSV (x,y,z,status). Drone's reconstructed map.</td></tr>
+<tr><td>Output</td><td><code>input_errors.txt</code></td><td>Plain text. Created only when recoverable parse errors occurred.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h1>7. Design Considerations and Alternatives</h1>
+
+<h2>7.1 Dependency Inversion</h2>
+<p>Drone depends only on three abstract interfaces. Concrete mocks are injected by Simulator. This makes the algorithm
+independently testable and decouples it from simulation details.</p>
+<p><b>Alternative considered:</b> having the Drone directly call mock classes. Rejected because it couples the algorithm to the
+simulation, prevents substituting real hardware drivers, and makes unit testing harder.</p>
+
+<h2>7.2 Dense vs. Sparse Map Storage</h2>
+<p>The ground-truth map uses a sparse hash-map (only occupied cells stored, minimal memory). The drone's result map uses a
+pre-allocated dense vector for O(1) array access in the hot-path scan/update loop.</p>
+<p><b>Alternative considered:</b> using sparse storage for both. Rejected because profiling showed the hash-map lookup was the
+bottleneck in <code>processScan()</code>, and switching to dense storage gave a ~30× speedup in the inner loop.</p>
+
+<h2>7.3 Deterministic DFS vs. Other Exploration Strategies</h2>
+<p>Fixed neighbour-search order (+X,−X,+Y,−Y,+Z,−Z) makes the exploration fully deterministic and reproducible across runs.</p>
+<p><b>Alternatives considered:</b></p>
+<ul>
+  <li><b>BFS:</b> Would visit cells layer-by-layer, but requires storing the full frontier queue (high memory for large maps) and generates longer backtrack paths.</li>
+  <li><b>Frontier-based exploration:</b> Would prioritise cells at the boundary of the mapped/unmapped regions. More efficient for sparse maps but significantly more complex to implement and harder to guarantee determinism.</li>
+  <li><b>Random walk:</b> Simple but non-deterministic, with no guarantee of full coverage.</li>
+</ul>
+
+<h2>7.4 Strong Types with mp-units</h2>
+<p>All physical quantities (Distance, Angle) use the <b>mp-units</b> library for compile-time unit safety.
+This prevents unit-mismatch bugs (e.g. accidentally passing a distance where an angle is expected) with zero runtime overhead.</p>
+<p><b>Alternative considered:</b> using raw <code>double</code> everywhere with naming conventions. Rejected because it offers no compiler enforcement and historically led to hard-to-find bugs (e.g. Mars Climate Orbiter).</p>
+
+<h2>7.5 Recoverable Error Handling</h2>
+<p>The program never calls <code>exit()</code> or <code>abort()</code>. All config parsing errors fall back to documented defaults and are logged to
+<code>input_errors.txt</code>. Only truly unrecoverable situations (missing map file, drone starts inside a wall) cause a non-zero return from <code>main()</code>.</p>
+<p><b>Alternative considered:</b> fail fast on any parse error. Rejected because the assignment specifies recoverable behaviour and partial results are still useful.</p>
+
+<h2>7.6 Scan Before Move</h2>
+<p>The drone scans all 10 directions before moving to the next cell. This maximises map coverage at each visited position
+and avoids blind-spot artefacts that would occur if scanning only in the direction of travel.</p>
+<p><b>Alternative considered:</b> scan only forward. Rejected because it leaves large unmapped regions behind the drone and significantly reduces the final score.</p>
+
+<!-- ============================================================ -->
+<h1>8. Testing Approach</h1>
+
+<h2>8.1 Framework</h2>
+<p>The project uses <b>Google Test (GTest) v1.14.0</b>, fetched automatically via CMake <code>FetchContent</code>.
+GTest is linked only into test binaries — the main <code>drone_mapper</code> executable has no test dependency.
+Tests are registered with CTest and run via <code>ctest --output-on-failure</code>.</p>
+
+<h2>8.2 Test Organisation</h2>
+<p>The test suite is split into four test binaries, each targeting a specific layer of the architecture:</p>
+
+<table>
+<tr><th>Test File</th><th>Component Under Test</th><th>Tests</th><th>Focus</th></tr>
+<tr><td><code>test_config_parser.cpp</code></td><td>ConfigParser, toGrid()</td><td>17</td>
+    <td>Valid files, missing/bad keys, inline comments, file not found, lidar range swap, FOVC clamping, Windows line endings, partial start position, negative resolution, grid rounding</td></tr>
+<tr><td><code>test_sparse_map.cpp</code></td><td>SparseBuildingMap</td><td>17</td>
+    <td>Cell get/set/overwrite, negative indices, cross-contamination, file roundtrip, comment/blank line handling, bad lines, missing file, invalid save path, score formula (perfect match, empty, false positives)</td></tr>
+<tr><td><code>test_mocks.cpp</code></td><td>PositionSensorMock, MovementDriverMock, LidarMock</td><td>25</td>
+    <td>Position/angle roundtrip, angle normalisation (>360, negative), rotate/advance/elevate correctness, max-limit enforcement, wall collision rejection, boundary rejection, lidar beam count, unit vector validation, Zmin/Zmax behaviour</td></tr>
+<tr><td><code>test_drone.cpp</code></td><td>Drone (unit + integration)</td><td>7</td>
+    <td>First step marks start empty, wall detection, beam path marking, termination in enclosed room, obstacle-everywhere handling, result map consistency, integration score on simple room</td></tr>
+</table>
+
+<p><b>Total: 66 automated tests.</b></p>
+
+<h2>8.3 Testing Strategy</h2>
+<ul>
+  <li><b>Unit tests:</b> Each component is tested in isolation. ConfigParser and SparseBuildingMap tests use temporary files written to the system temp directory. Mock tests construct individual mock objects with controlled inputs.</li>
+  <li><b>Integration tests:</b> The Drone tests wire up the full chain (Drone + all three mocks + SparseBuildingMap) over small synthetic building maps, verifying end-to-end exploration behaviour and scoring.</li>
+  <li><b>Dependency injection enables isolation:</b> Because the Drone depends only on abstract interfaces, each mock can be tested independently. The Drone's algorithm can be tested against known ground-truth maps without modifying any production code.</li>
+  <li><b>Edge-case coverage:</b> Tests cover adversarial inputs (empty files, bad values, missing keys), boundary conditions (obstacles everywhere, drone surrounded by walls), and correctness invariants (occupied cells never overwritten with empty, all beam directions are unit vectors).</li>
+  <li><b>Shared test helpers:</b> <code>test_helpers.hpp</code> provides <code>writeTempFile()</code>, factory functions (<code>makeDefaultDrone()</code>, <code>makeDefaultMission()</code>, <code>makeSimpleRoomMap()</code>), and custom assertion macros (<code>EXPECT_DISTANCE_NEAR</code>, <code>EXPECT_ANGLE_NEAR</code>) to reduce boilerplate.</li>
+</ul>
+
+<h2>8.4 How to Run</h2>
+<pre>mkdir build &amp;&amp; cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+ctest --output-on-failure</pre>
+
+<!-- ============================================================ -->
+<h1>9. Glossary</h1>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><b>FOVC</b></td><td>Field Of View Circles — number of beam rings in the Lidar cone (incl. centre).</td></tr>
+<tr><td><b>Grid / Voxel</b></td><td>A 3D integer-index cell produced by dividing continuous coords by step size.</td></tr>
+<tr><td><b>Ground Truth</b></td><td>The hidden building map loaded from map_input.txt; never seen directly by the Drone.</td></tr>
+<tr><td><b>Zmin / Zmax</b></td><td>Minimum / maximum measurable Lidar range (cm).</td></tr>
+<tr><td><b>Dense map</b></td><td>Pre-allocated flat vector representing every cell in the mission volume.</td></tr>
+<tr><td><b>Sparse map</b></td><td>Hash-map storing only cells that have been explicitly written.</td></tr>
+<tr><td><b>BasePath</b></td><td>Directory containing the three input files and receiving the output files.</td></tr>
+</table>
+
+<div class="footer">
+  Roni Hagai 324207257 &nbsp;|&nbsp; Noy Elyasi 315659201
+</div>
+
+</body>
+</html>
