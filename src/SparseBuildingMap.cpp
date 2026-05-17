@@ -113,7 +113,7 @@ bool SparseBuildingMap::loadFromFile(const std::string& filename,
         if ((iss >> x >> c1 >> y >> c2 >> z >> c3 >> status)
             && c1 == ',' && c2 == ',' && c3 == ',')
         {
-            data_[GridPoint{x, y, z}] = status;
+            setCell(GridPoint{x, y, z}, status);
         } else {
             ++badLines;
             if (badLines <= 10) {

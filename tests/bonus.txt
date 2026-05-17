@@ -11,7 +11,7 @@ External Library: Google Test (GTest) v1.14.0
                the main drone_mapper executable.
 
 Usage:
-  - TEST(Suite, Name) macros define isolated test cases across four test files.
+  - TEST(Suite, Name) macros define isolated test cases across seven test files.
   - EXPECT_EQ / EXPECT_TRUE / EXPECT_NEAR / EXPECT_THROW macros assert
     correctness; non-fatal so all failures in a test are reported together.
   - GTest::gtest_main provides main(); gtest_discover_tests() registers each
@@ -24,8 +24,11 @@ Test files:
   - tests/test_sparse_map.cpp     — 17 tests for SparseBuildingMap (cell access, file I/O, scoring)
   - tests/test_mocks.cpp          — 25 tests for PositionSensorMock, MovementDriverMock, LidarMock
   - tests/test_drone.cpp          —  7 tests for the Drone algorithm (unit + integration)
+  - tests/test_dense_map.cpp      — 16 tests for SparseBuildingMap in dense mode (the real sim path)
+  - tests/test_simulator.cpp      —  8 tests for Simulator end-to-end (run, output, error handling)
+  - tests/test_boundaries.cpp     —  8 tests for mission boundary enforcement in MovementDriverMock
 
-Total: 66 automated tests, all passing.
+Total: 98 automated tests, all passing.
 
 How to run:
   mkdir build && cd build
@@ -37,9 +40,17 @@ Coverage summary:
   - Config parsing: valid files, missing keys, bad values, inline comments,
     file not found, inverted lidar range, FOVC clamping, Windows line endings,
     partial/missing start position, negative resolution.
-  - SparseBuildingMap: get/set/overwrite cells, negative indices, file roundtrip,
-    bad/comment lines, invalid path, score formula correctness.
+  - SparseBuildingMap (sparse mode): get/set/overwrite cells, negative indices,
+    file roundtrip, bad/comment lines, invalid path, score formula correctness.
+  - SparseBuildingMap (dense mode): initDense, cell access, out-of-bounds safety,
+    mappedCount correctness, loadFromFile into dense array, saveToFile roundtrip,
+    calculateScore with dense ground truth, LidarMock ray-casting against dense map.
   - Mocks: position and angle normalisation, rotate/advance/elevate with collision
     detection, lidar beam count, unit vector validation, Zmin/Zmax behaviour.
+  - Movement boundaries: advance and elevate rejected when they would exceed
+    minX/maxX/minY/maxY/minHeight/maxHeight of the mission volume.
   - Drone: first step marks cell empty, wall detection, beam path marking,
     termination in enclosed room, obstacle everywhere, integration score > threshold.
+  - Simulator (end-to-end): valid room returns 0 and writes map_output.txt,
+    output map is non-empty, no errors file on clean run, missing map file returns
+    non-zero, start inside wall returns non-zero, bad drone config uses defaults.
