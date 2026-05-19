@@ -3,6 +3,15 @@
 #include <algorithm>
 #include <limits>
 
+namespace {
+// Returns the shortest-path angular difference, normalised to (-180, +180].
+double normalizeAngleDiff(double diff) noexcept {
+    while (diff >  180.0) diff -= 360.0;
+    while (diff < -180.0) diff += 360.0;
+    return diff;
+}
+} // namespace
+
 namespace dm {
 
 Drone::Drone(std::shared_ptr<IPositionSensor> posSensor,
@@ -112,9 +121,11 @@ void Drone::scanDirection(Angle xyOffset, Angle elevAngle)
 // ============================================================
 void Drone::scanAllDirections()
 {
+    static constexpr int    SCAN_DIR_COUNT = 8;
+    static constexpr double SCAN_DIR_STEP  = 45.0;
     // Horizontal ring — 8 directions, every 45°
-    for (int i = 0; i < 8; ++i) {
-        scanDirection(static_cast<double>(i * 45) * deg, 0.0 * deg);
+    for (int i = 0; i < SCAN_DIR_COUNT; ++i) {
+        scanDirection(static_cast<double>(i) * SCAN_DIR_STEP * deg, 0.0 * deg);
     }
     // Vertical extremes
     scanDirection(0.0 * deg,  90.0 * deg);  // straight up
@@ -198,8 +209,7 @@ void Drone::faceDirection(double targetAngleDeg)
     double diff = targetAngleDeg - curAngle;
 
     // Normalise to (-180, +180] for shortest-path rotation
-    while (diff >  180.0) diff -= 360.0;
-    while (diff < -180.0) diff += 360.0;
+    diff = normalizeAngleDiff(diff);
 
     const double maxRot = droneCfg_.maxRotate.numerical_value_in(deg);
 

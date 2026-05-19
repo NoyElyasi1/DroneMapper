@@ -27,12 +27,12 @@ public:
     virtual ~IPositionSensor() = default;
 
     // Returns the drone centre in world coordinates (cm).
-    virtual Position3D getCurrentPosition() = 0;
+    virtual Position3D getCurrentPosition() const = 0;
 
     // Returns the drone's XY heading in degrees.
     // Convention: 0 = East (+X), 90 = South (+Y),
     //             180 = West (-X), 270 = North (-Y).
-    virtual Angle getCurrentAngle() = 0;
+    virtual Angle getCurrentAngle() const = 0;
 };
 
 // ------------------------------------------------------------

@@ -3,6 +3,12 @@
 #include <sstream>
 #include <cmath>
 
+namespace {
+constexpr double SCORE_WEIGHT_OCCUPIED = 50.0;
+constexpr double SCORE_WEIGHT_EMPTY    = 30.0;
+constexpr double SCORE_WEIGHT_COVERAGE = 20.0;
+} // namespace
+
 namespace dm {
 
 // ---- Dense mode initialisation ----
@@ -225,8 +231,8 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
     }
 
     const double scoreA = (gtOccupiedTotal == 0)
-        ? 50.0
-        : (50.0 * droneCorrectOccupied / gtOccupiedTotal);
+        ? SCORE_WEIGHT_OCCUPIED
+        : (SCORE_WEIGHT_OCCUPIED * droneCorrectOccupied / gtOccupiedTotal);
 
     // ---- Component B: empty precision + Component C: coverage ----
     int droneEmptyTotal    = 0;
@@ -264,7 +270,7 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
 
     const double scoreB = (droneEmptyTotal == 0)
         ? 0.0
-        : (30.0 * droneEmptyCorrect / droneEmptyTotal);
+        : (SCORE_WEIGHT_EMPTY * droneEmptyCorrect / droneEmptyTotal);
 
     // ---- Component C: coverage ----
     // Estimate total mission cells from boundary and step sizes
@@ -278,7 +284,7 @@ double SparseBuildingMap::calculateScore(const SparseBuildingMap& groundTruth,
 
     const double scoreC = (totalCells <= 0)
         ? 0.0
-        : (20.0 * mappedCells / static_cast<double>(totalCells));
+        : (SCORE_WEIGHT_COVERAGE * mappedCells / static_cast<double>(totalCells));
 
     return scoreA + scoreB + scoreC;
 }

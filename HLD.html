@@ -277,11 +277,13 @@ beam is ray-marched through the ground-truth map in steps of min(stepX, stepY, s
 </ul>
 
 <h2>5.6 SparseBuildingMap — 3D Occupancy Grid</h2>
-<p>Two storage modes selected at construction time:</p>
+<p>Two storage modes available; the simulation always uses dense mode for both the ground-truth and the drone's result map:</p>
 <ul>
-  <li><b>Sparse mode</b> (ground truth loaded from file): <code>std::unordered_map&lt;GridPoint, int&gt;</code> — only stores non-empty cells.</li>
-  <li><b>Dense mode</b> (drone's result map, chosen for speed): a contiguous <code>std::vector&lt;int&gt;</code> pre-allocated for the full
-  mission volume — O(1) array access vs. O(1) average hash-map but with lower constant factor (≈3 ns vs. ≈100 ns per lookup).</li>
+  <li><b>Dense mode</b> (used by both maps in simulation): a contiguous <code>std::vector&lt;int8_t&gt;</code> pre-allocated for the full
+  mission volume via <code>initDense()</code> — O(1) array access (~3 ns per lookup). Both the Simulator's ground-truth map and the
+  Drone's result map call <code>initDense()</code> before use.</li>
+  <li><b>Sparse mode</b> (default when <code>initDense()</code> is not called): <code>std::unordered_map&lt;GridPoint, int&gt;</code> — only
+  stores explicitly written cells (~100 ns per lookup). Available for tests and small ad-hoc maps.</li>
 </ul>
 
 <p>Cell values follow the <code>CellStatus</code> enum:</p>
@@ -306,7 +308,7 @@ duplicate keys: last wins; bad or missing values produce logged defaults and nev
 </ul>
 
 <h2>5.8 Types.hpp — Strong-Typed Units (mp-units)</h2>
-<p>All physical quantities use the <b>mp-units</b> library (v2.4.0) to enforce unit safety at compile time.
+<p>All physical quantities use the <b>mp-units</b> library (v2.5.0) to enforce unit safety at compile time.
 The library is fetched automatically via CMake <code>FetchContent</code>.</p>
 <p>Two strong quantity type aliases are defined:</p>
 <pre>using namespace mp_units;
@@ -395,7 +397,7 @@ Tests are registered with CTest and run via <code>ctest --output-on-failure</cod
     <td>First step marks start empty, wall detection, beam path marking, termination in enclosed room, obstacle-everywhere handling, result map consistency, integration score on simple room</td></tr>
 </table>
 
-<p><b>Total: 66 automated tests.</b></p>
+<p><b>Total: 98 automated tests.</b></p>
 
 <h2>8.3 Testing Strategy</h2>
 <ul>

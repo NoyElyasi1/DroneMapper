@@ -2,17 +2,17 @@
 # All distances in cm
 
 min_x=0
-max_x=300
+max_x=80
 min_y=0
-max_y=200
+max_y=50
 min_height=0
-max_height=60
+max_height=18
 
 res_x=0
 res_y=0
 res_height=0
 
 # Start in the accessible left portion
-start_x=50
-start_y=100
-start_z=10
+start_x=20
+start_y=25
+start_z=5

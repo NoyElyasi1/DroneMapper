@@ -21,7 +21,6 @@
 #include "SparseBuildingMap.hpp"
 #include "ConfigParser.hpp"
 #include <memory>
-#include <cmath>
 
 namespace dm {
 

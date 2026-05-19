@@ -33,7 +33,7 @@ Key=value pairs defining the drone's physical capabilities:
 - `lidar_zmin` — minimum measurable distance (cm)
 - `lidar_zmax` — maximum operational range (cm)
 - `lidar_d` — circle spacing at Zmin (cm)
-- `lidar_fovc` — number of beam circles (0 = central beam only)
+- `lidar_fovc` — number of beam circles (1 = central beam only)
 
 ### `mission_config.txt`
 Key=value pairs defining the mapping mission:

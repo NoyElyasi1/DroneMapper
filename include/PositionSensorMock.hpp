@@ -22,8 +22,8 @@ public:
     PositionSensorMock() = default;
 
     // IPositionSensor interface
-    Position3D getCurrentPosition() override { return pos_; }
-    Angle      getCurrentAngle()    override { return angle_; }
+    Position3D getCurrentPosition() const override { return pos_; }
+    Angle      getCurrentAngle()    const override { return angle_; }
 
     // Called by MovementDriverMock to update state after each move
     void setPosition(const Position3D& p) { pos_ = p; }
