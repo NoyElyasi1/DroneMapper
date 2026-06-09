@@ -17,17 +17,17 @@ namespace dm {
 // ============================================================
 bool Simulator::loadAll(const std::string& basePath)
 {
-    parseDroneConfig  (basePath + "/drone_config.txt",   droneCfg_,   errors_);
-    parseMissionConfig(basePath + "/mission_config.txt", missionCfg_, errors_);
+    parseDroneConfig  (basePath + "/drone_config.yaml",   droneCfg_,   errors_);
+    parseMissionConfig(basePath + "/mission_config.yaml", missionCfg_, errors_);
 
     // Use dense flat-array storage for the ground-truth map so that
     // LidarMock's castRay inner loop hits array indices (~3 ns) instead
     // of unordered_map lookups (~100 ns).
     groundTruth_.initDense(missionCfg_);
 
-    if (!groundTruth_.loadFromFile(basePath + "/map_input.txt", errors_)) {
+    if (!groundTruth_.loadFromNpy(basePath + "/map_input.npy", missionCfg_, errors_)) {
         std::cerr << "[Simulator] FATAL: cannot load ground-truth map ("
-                  << basePath << "/map_input.txt)\n";
+                  << basePath << "/map_input.npy)\n";
         return false;
     }
 
@@ -85,11 +85,11 @@ int Simulator::run(const std::string& basePath)
         startZ = missionCfg_.startZ;
     } else {
         // Default: horizontal centre of the map,
-        // vertical: floor level + half drone height + 1 cm clearance
+        // vertical: floor level + half drone radius + 1 cm clearance
         startX = (missionCfg_.minX + missionCfg_.maxX) / 2.0;
         startY = (missionCfg_.minY + missionCfg_.maxY) / 2.0;
         startZ = missionCfg_.minHeight
-               + droneCfg_.height.numerical_value_in(cm) / 2.0
+               + droneCfg_.dimensions.numerical_value_in(cm) / 2.0
                + 1.0;
     }
 

@@ -12,7 +12,12 @@
 //  -1  = unmapped   (not yet reached / unreachable)
 //  -2  = out of bounds
 //
-// File format (map_input.txt / map_output.txt):
+// Input format (map_input.npy):
+//   NumPy 3D array, shape (nx, ny, nz), dtype int8 or uint8.
+//   array[ix, iy, iz] = 1 → occupied cell at
+//     x = minX + ix*step, y = minY + iy*step, z = minHeight + iz*step.
+//
+// Output format (map_output.txt):
 //   # x,y,z,status          <- comment line
 //   -10,0,5,1               <- grid-index row
 //   ...
@@ -56,10 +61,23 @@ public:
 
     // ---- File I/O ----
 
-    // Load from CSV file. Recoverable parse errors are appended
-    // to errorsOut. Returns false if the file cannot be opened.
+    // Load from a NumPy .npy file (3D int8/uint8/bool array).
+    // The mission config provides boundary and step information needed
+    // to convert array indices to grid coordinates.
+    // Recoverable errors are appended to errorsOut.
+    // Returns false if the file cannot be opened or has a fatal format error.
+    bool loadFromNpy(const std::string& filename,
+                     const MissionConfig& mc,
+                     std::string& errorsOut);
+
+    // Load from CSV file (legacy / output round-trip).
+    // Recoverable parse errors are appended to errorsOut.
+    // Returns false if the file cannot be opened.
     bool loadFromFile(const std::string& filename,
                       std::string& errorsOut);
+
+    // Write all cells to CSV. Returns false on I/O failure.
+    bool saveToFile(const std::string& filename) const;
 
     // Write all cells to CSV. Returns false on I/O failure.
     bool saveToFile(const std::string& filename) const;

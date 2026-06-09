@@ -40,6 +40,18 @@ set(MP_UNITS_API_CONTRACTS "NONE" CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(mp-units)
 
 # ============================================================
+# Fetch yaml-cpp — YAML 1.2 parser/emitter for C++
+# ============================================================
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG        0.8.0
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS  OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(yaml-cpp)
+
+# ============================================================
 # Main executable - 
 # ============================================================
 add_executable(drone_mapper
@@ -59,6 +71,7 @@ target_include_directories(drone_mapper PRIVATE
 
 target_link_libraries(drone_mapper PRIVATE
     mp-units::mp-units
+    yaml-cpp::yaml-cpp
 )
 
 # ============================================================

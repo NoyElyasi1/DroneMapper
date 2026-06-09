@@ -29,7 +29,7 @@ add_library(drone_mapper_lib STATIC
 target_include_directories(drone_mapper_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
-target_link_libraries(drone_mapper_lib PUBLIC mp-units::mp-units)
+target_link_libraries(drone_mapper_lib PUBLIC mp-units::mp-units yaml-cpp::yaml-cpp)
 
 # ---- Helper macro to register a test binary ----
 macro(add_drone_test name source)

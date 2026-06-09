@@ -24,7 +24,7 @@ static MissionConfig makeTinyMission()
     mc.minX      = 0;  mc.maxX      = 10;
     mc.minY      = 0;  mc.maxY      = 10;
     mc.minHeight = 0;  mc.maxHeight = 10;
-    mc.resX = mc.resY = mc.resHeight = 0;   // step = 1 cm
+    mc.gpsResolutionCm = 1.0;  // step = 1 cm
     mc.computeSteps();
     return mc;
 }
