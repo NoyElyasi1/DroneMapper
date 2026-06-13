@@ -1,0 +1,8 @@
+{
+  "dependencies": [
+    "mp-units",
+    "tinynpy",
+    "gtest",
+    "yaml-cpp"
+  ]
+}
