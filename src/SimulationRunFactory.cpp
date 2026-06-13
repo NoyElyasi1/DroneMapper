@@ -51,7 +51,7 @@ std::filesystem::path makeRunDir(const std::filesystem::path& output_path,
     std::ostringstream oss;
     oss << sim.map_filename.stem().string()
         << "_ms" << mission.max_steps
-        << "_d"  << static_cast<int>(drone.dimensions.numerical_value_in(cm))
+        << "_d"  << static_cast<int>(drone.radius.numerical_value_in(cm))
         << "_fovc" << lidar.fov_circles;
     return output_path / "output_results" / oss.str();
 }
@@ -97,9 +97,22 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
     // Compute output resolution
     const auto res_result = computeResolution(mission, simulation.map_resolution);
 
-    // Output map uses same spatial extent as hidden map but possibly different resolution
+    // Output map uses same spatial extent as hidden map but possibly different resolution.
+    // If the mission specifies exploration_boundaries, clip the output map to that zone.
     types::MapConfig output_map_config = hidden_map_config;
     output_map_config.resolution = res_result.resolution;
+    if (mission.exploration_boundaries) {
+        const auto& eb = *mission.exploration_boundaries;
+        const auto& hb = hidden_map_config.boundaries;
+        // Clamp to hidden map bounds so we never go outside the loaded NPY.
+        auto clampX = [](auto v, auto lo, auto hi) { return v < lo ? lo : v > hi ? hi : v; };
+        output_map_config.boundaries.min_x      = clampX(eb.min_x,      hb.min_x,      hb.max_x);
+        output_map_config.boundaries.max_x      = clampX(eb.max_x,      hb.min_x,      hb.max_x);
+        output_map_config.boundaries.min_y      = clampX(eb.min_y,      hb.min_y,      hb.max_y);
+        output_map_config.boundaries.max_y      = clampX(eb.max_y,      hb.min_y,      hb.max_y);
+        output_map_config.boundaries.min_height = clampX(eb.min_height, hb.min_height, hb.max_height);
+        output_map_config.boundaries.max_height = clampX(eb.max_height, hb.min_height, hb.max_height);
+    }
     auto output_map = std::make_unique<Map3DImpl>(output_map_config);
 
     // Per-run output directory
@@ -114,7 +127,7 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
 
     auto movement = std::make_unique<MockMovement>(*gps, *hidden_map, drone);
     auto lidar_impl = std::make_unique<MockLidar>(lidar, *hidden_map, *gps);
-    auto mapping_algo = std::make_unique<MappingAlgorithmImpl>(mission, drone, hidden_map_config);
+    auto mapping_algo = std::make_unique<MappingAlgorithmImpl>(drone, *output_map);
     auto drone_ctrl = std::make_unique<DroneControlImpl>(
         drone, mission, *lidar_impl, *gps, *movement, *output_map, *mapping_algo);
     auto mission_ctrl = std::make_unique<MissionControlImpl>(mission, *drone_ctrl);

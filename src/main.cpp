@@ -7,9 +7,9 @@
 // directory is used.
 //
 // The program reads:
-//   <path>/drone_config.yaml
-//   <path>/mission_config.yaml
-//   <path>/map_input.npy
+//   <path>/drone_config.txt
+//   <path>/mission_config.txt
+//   <path>/map_input.txt
 //
 // And writes:
 //   <path>/map_output.txt

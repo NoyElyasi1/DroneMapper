@@ -3,11 +3,13 @@
 #include <drone_mapper/Units.h>
 
 #include <cstddef>
+#include <filesystem>
 #include <vector>
 
 namespace drone_mapper::types {
 
 struct LidarConfigData {
+    std::filesystem::path config_file{};
     PhysicalLength z_min{};
     PhysicalLength z_max{};
     PhysicalLength d{};

@@ -53,8 +53,7 @@
 //     the move is rejected, and the drone tries the next backtrack
 //     position.  Full path-finding (A*) would be needed for
 //     guaranteed backtracking in all topologies (future work).
-//   - missionCfg_.maxSteps caps the total step count so the
-//     simulation terminates in bounded time.
+//   - MAX_STEPS is a safety guard against any remaining edge-cases.
 // ============================================================
 
 #include "Interfaces.hpp"
@@ -122,8 +121,9 @@ private:
     // Cells the drone has physically visited and scanned
     std::unordered_set<GridPoint, GridPointHash> visited_;
 
-    // Safety counter: incremented each performStep(); compared against missionCfg_.maxSteps.
+    // Safety counter to prevent any remaining infinite-loop edge cases
     int stepCount_ = 0;
+    static constexpr int MAX_STEPS = 2'000'000;
 };
 
 } // namespace dm

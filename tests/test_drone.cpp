@@ -130,7 +130,7 @@ TEST(Drone, SmallEnclosedRoom_EventuallyTerminates)
     mc.minX = 0; mc.maxX = 10;
     mc.minY = 0; mc.maxY = 10;
     mc.minHeight = 0; mc.maxHeight = 10;
-    mc.gpsResolutionCm = 1.0;  // step = 1 cm
+    mc.resX = mc.resY = mc.resHeight = 0;
     mc.computeSteps();
 
     DroneConfig dc = makeDefaultDrone();
@@ -166,7 +166,6 @@ TEST(Drone, ObstaclesEverywhere_FinishesCleanly)
     mc.minX = 0; mc.maxX = 10;
     mc.minY = 0; mc.maxY = 10;
     mc.minHeight = 0; mc.maxHeight = 10;
-    mc.gpsResolutionCm = 1.0;  // step = 1 cm
     mc.computeSteps();
 
     DroneConfig dc = makeDefaultDrone();
@@ -206,7 +205,6 @@ TEST(Drone, ResultMap_NoUnmappedInVisitedRegion)
     mc.minX = 0; mc.maxX = 10;
     mc.minY = 0; mc.maxY = 10;
     mc.minHeight = 0; mc.maxHeight = 10;
-    mc.gpsResolutionCm = 1.0;  // step = 1 cm
     mc.computeSteps();
 
     DroneConfig dc = makeDefaultDrone();
@@ -251,7 +249,6 @@ TEST(Drone, Integration_SimpleRoom_ScoreAboveThreshold)
     mc.minX = 0; mc.maxX = 30;
     mc.minY = 0; mc.maxY = 30;
     mc.minHeight = 0; mc.maxHeight = 20;
-    mc.gpsResolutionCm = 1.0;  // step = 1 cm
     mc.computeSteps();
 
     DroneConfig dc = makeDefaultDrone();

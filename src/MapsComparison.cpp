@@ -24,6 +24,7 @@ double scoreOneTarget(const IMap3D& ground_truth, const IMap3D& drone_map) {
 
     int gt_occupied_total      = 0;
     int drone_correct_occupied = 0;
+    int drone_false_positives  = 0;
 
     for (int iz = 0; iz < gt->szZ(); ++iz)
     for (int iy = 0; iy < gt->szY(); ++iy)
@@ -37,12 +38,22 @@ double scoreOneTarget(const IMap3D& ground_truth, const IMap3D& drone_map) {
             ++gt_occupied_total;
             if (drone_map.atVoxel(world) == types::VoxelOccupancy::Occupied)
                 ++drone_correct_occupied;
+        } else {
+            if (drone_map.atVoxel(world) == types::VoxelOccupancy::Occupied)
+                ++drone_false_positives;
         }
     }
 
-    const double scoreA = (gt_occupied_total == 0)
-        ? WEIGHT_OCCUPIED
-        : (WEIGHT_OCCUPIED * drone_correct_occupied / gt_occupied_total);
+    // Use F1-like score: harmonic mean of recall and precision for occupied voxels
+    const int drone_occupied_total = drone_correct_occupied + drone_false_positives;
+    const double recall    = (gt_occupied_total == 0) ? 1.0
+                             : static_cast<double>(drone_correct_occupied) / gt_occupied_total;
+    const double precision = (drone_occupied_total == 0) ? 1.0
+                             : static_cast<double>(drone_correct_occupied) / drone_occupied_total;
+    const double f1 = (recall + precision > 0.0)
+                      ? 2.0 * recall * precision / (recall + precision)
+                      : 0.0;
+    const double scoreA = WEIGHT_OCCUPIED * f1;
 
     const auto dm_cfg  = drone_map.getMapConfig();
     const double res_dm = dm_cfg.resolution.numerical_value_in(cm);

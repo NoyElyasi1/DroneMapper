@@ -8,86 +8,80 @@ using namespace dm;
 using namespace dm::test;
 
 // ============================================================
-// ConfigParser — DroneConfig tests (YAML format)
+// ConfigParser — DroneConfig tests
 // ============================================================
 
 // All valid keys present → values parsed correctly, no errors
 TEST(DroneConfig, ValidFile_AllKeysPresent)
 {
     const std::string content =
-        "drone_config:\n"
-        "  dimensions_cm: 25\n"
-        "  max_rotate_deg: 45\n"
-        "  max_advance_cm: 20\n"
-        "  max_elevate_cm: 15\n"
-        "  lidar_zmin_cm: 10\n"
-        "  lidar_zmax_cm: 100\n"
-        "  lidar_d: 3.0\n"
-        "  lidar_fovc: 3\n";
+        "width=25\n"
+        "length=35\n"
+        "height=15\n"
+        "max_rotate=45\n"
+        "max_advance=20\n"
+        "max_elevate=15\n"
+        "lidar_zmin=10\n"
+        "lidar_zmax=100\n"
+        "lidar_d=3.0\n"
+        "lidar_fovc=3\n";
 
     DroneConfig cfg;
     std::string errors;
-    EXPECT_TRUE(parseDroneConfig(writeTempFile(content, ".yaml"), cfg, errors));
+    EXPECT_TRUE(parseDroneConfig(writeTempFile(content), cfg, errors));
     EXPECT_TRUE(errors.empty()) << "Unexpected errors: " << errors;
 
-    EXPECT_DISTANCE_NEAR(cfg.dimensions,  25.0, 1e-9);
-    EXPECT_ANGLE_NEAR   (cfg.maxRotate,   45.0, 1e-9);
-    EXPECT_DISTANCE_NEAR(cfg.maxAdvance,  20.0, 1e-9);
-    EXPECT_DISTANCE_NEAR(cfg.maxElevate,  15.0, 1e-9);
-    EXPECT_DISTANCE_NEAR(cfg.lidarZmin,   10.0, 1e-9);
-    EXPECT_DISTANCE_NEAR(cfg.lidarZmax,  100.0, 1e-9);
-    EXPECT_NEAR(cfg.lidarD,   3.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.width,      25.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.length,     35.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.height,     15.0, 1e-9);
+    EXPECT_ANGLE_NEAR   (cfg.maxRotate,  45.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.maxAdvance, 20.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.maxElevate, 15.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.lidarZmin,  10.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.lidarZmax, 100.0, 1e-9);
+    EXPECT_NEAR(cfg.lidarD, 3.0, 1e-9);
     EXPECT_EQ  (cfg.lidarFOVC, 3);
 }
 
-// Missing drone_config root key → defaults used, errors logged
-TEST(DroneConfig, MissingRootKey_UsesDefaults)
+// Missing keys → defaults are used, errors are logged
+TEST(DroneConfig, MissingKeys_UsesDefaults)
 {
-    // Empty file (no drone_config key)
+    // Completely empty file
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig(writeTempFile("", ".yaml"), cfg, errors);
+    parseDroneConfig(writeTempFile(""), cfg, errors);
 
     // Defaults should be in place
-    EXPECT_DISTANCE_NEAR(cfg.dimensions, 30.0, 1e-9);
+    EXPECT_DISTANCE_NEAR(cfg.width,      30.0, 1e-9);
     EXPECT_DISTANCE_NEAR(cfg.lidarZmin,  20.0, 1e-9);
     EXPECT_DISTANCE_NEAR(cfg.lidarZmax, 120.0, 1e-9);
     EXPECT_EQ(cfg.lidarFOVC, 5);
 
-    // Errors should be logged
-    EXPECT_FALSE(errors.empty());
-}
-
-// Missing individual keys → defaults used, errors logged
-TEST(DroneConfig, MissingKeys_UsesDefaults)
-{
-    const std::string content =
-        "drone_config:\n"
-        "  dimensions_cm: 20\n";
-        // max_rotate_deg etc. omitted → defaults
-
-    DroneConfig cfg;
-    std::string errors;
-    parseDroneConfig(writeTempFile(content, ".yaml"), cfg, errors);
-
-    EXPECT_DISTANCE_NEAR(cfg.dimensions, 20.0, 1e-9);
-    EXPECT_ANGLE_NEAR   (cfg.maxRotate,  45.0, 1e-9);  // default
-    EXPECT_DISTANCE_NEAR(cfg.maxAdvance, 50.0, 1e-9);  // default
+    // Errors should mention missing keys
     EXPECT_FALSE(errors.empty());
 }
 
 // Bad numeric value → default used, error logged
 TEST(DroneConfig, BadValue_UsesDefault)
 {
-    const std::string content =
-        "drone_config:\n"
-        "  dimensions_cm: not_a_number\n";
+    const std::string content = "width=not_a_number\n";
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig(writeTempFile(content, ".yaml"), cfg, errors);
+    parseDroneConfig(writeTempFile(content), cfg, errors);
 
-    EXPECT_DISTANCE_NEAR(cfg.dimensions, 30.0, 1e-9);  // default
-    EXPECT_NE(errors.find("dimensions_cm"), std::string::npos);
+    EXPECT_DISTANCE_NEAR(cfg.width, 30.0, 1e-9);  // default
+    EXPECT_NE(errors.find("width"), std::string::npos);
+}
+
+// Inline comment after value is ignored
+TEST(DroneConfig, InlineComment_Ignored)
+{
+    const std::string content = "width=42 # this is a comment\n";
+    DroneConfig cfg;
+    std::string errors;
+    parseDroneConfig(writeTempFile(content), cfg, errors);
+
+    EXPECT_DISTANCE_NEAR(cfg.width, 42.0, 1e-9);
 }
 
 // File does not exist → all defaults, file error logged
@@ -95,9 +89,9 @@ TEST(DroneConfig, FileNotFound_UsesDefaults)
 {
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig("this_file_does_not_exist_abc123.yaml", cfg, errors);
+    parseDroneConfig("this_file_does_not_exist_abc123.txt", cfg, errors);
 
-    EXPECT_DISTANCE_NEAR(cfg.dimensions, 30.0, 1e-9);  // default
+    EXPECT_DISTANCE_NEAR(cfg.width, 30.0, 1e-9);  // default
     EXPECT_FALSE(errors.empty());
 }
 
@@ -105,18 +99,13 @@ TEST(DroneConfig, FileNotFound_UsesDefaults)
 TEST(DroneConfig, LidarRange_SwappedIfInverted)
 {
     const std::string content =
-        "drone_config:\n"
-        "  dimensions_cm: 30\n"
-        "  max_rotate_deg: 45\n"
-        "  max_advance_cm: 50\n"
-        "  max_elevate_cm: 40\n"
-        "  lidar_zmin_cm: 100\n"
-        "  lidar_zmax_cm: 20\n";
+        "lidar_zmin=100\n"
+        "lidar_zmax=20\n";
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig(writeTempFile(content, ".yaml"), cfg, errors);
+    parseDroneConfig(writeTempFile(content), cfg, errors);
 
-    // After swap: zmin < zmax
+    // After swap: zmin=20, zmax=100
     EXPECT_LT(cfg.lidarZmin.numerical_value_in(cm),
               cfg.lidarZmax.numerical_value_in(cm));
     EXPECT_FALSE(errors.empty());
@@ -125,64 +114,52 @@ TEST(DroneConfig, LidarRange_SwappedIfInverted)
 // lidar_fovc < 1 → clamped to 1
 TEST(DroneConfig, FOVC_ClampedToOne)
 {
-    const std::string content =
-        "drone_config:\n"
-        "  dimensions_cm: 30\n"
-        "  max_rotate_deg: 45\n"
-        "  max_advance_cm: 50\n"
-        "  max_elevate_cm: 40\n"
-        "  lidar_fovc: 0\n";
     DroneConfig cfg;
     std::string errors;
-    parseDroneConfig(writeTempFile(content, ".yaml"), cfg, errors);
+    parseDroneConfig(writeTempFile("lidar_fovc=0\n"), cfg, errors);
     EXPECT_EQ(cfg.lidarFOVC, 1);
 }
 
 // ============================================================
-// ConfigParser — MissionConfig tests (YAML format)
+// ConfigParser — MissionConfig tests
 // ============================================================
 
 TEST(MissionConfig, ValidFile_AllKeysPresent)
 {
     const std::string content =
-        "mission_config:\n"
-        "  max_steps: 1200\n"
-        "  boundaries:\n"
-        "    x_boundary:\n"
-        "      min_cm: -100\n"
-        "      max_cm: 100\n"
-        "    y_boundary:\n"
-        "      min_cm: -50\n"
-        "      max_cm: 50\n"
-        "    height_boundary:\n"
-        "      min_cm: 5\n"
-        "      max_cm: 200\n"
-        "  gps_resolution_cm: 10\n"
-        "  mapping_resolution_factor: 2\n"
-        "  start_x_cm: 10\n"
-        "  start_y_cm: 20\n"
-        "  start_z_cm: 30\n";
+        "min_x=-100\n"
+        "max_x=100\n"
+        "min_y=-50\n"
+        "max_y=50\n"
+        "min_height=5\n"
+        "max_height=200\n"
+        "res_x=1\n"
+        "res_y=0\n"
+        "res_height=1\n"
+        "start_x=10\n"
+        "start_y=20\n"
+        "start_z=30\n";
 
     MissionConfig cfg;
     std::string errors;
-    EXPECT_TRUE(parseMissionConfig(writeTempFile(content, ".yaml"), cfg, errors));
+    EXPECT_TRUE(parseMissionConfig(writeTempFile(content), cfg, errors));
     EXPECT_TRUE(errors.empty()) << errors;
 
-    EXPECT_EQ  (cfg.maxSteps, 1200);
-    EXPECT_NEAR(cfg.minX,    -100.0, 1e-9);
-    EXPECT_NEAR(cfg.maxX,     100.0, 1e-9);
-    EXPECT_NEAR(cfg.minY,     -50.0, 1e-9);
-    EXPECT_NEAR(cfg.maxY,      50.0, 1e-9);
+    EXPECT_NEAR(cfg.minX, -100.0, 1e-9);
+    EXPECT_NEAR(cfg.maxX,  100.0, 1e-9);
+    EXPECT_NEAR(cfg.minY,  -50.0, 1e-9);
+    EXPECT_NEAR(cfg.maxY,   50.0, 1e-9);
     EXPECT_NEAR(cfg.minHeight,  5.0, 1e-9);
     EXPECT_NEAR(cfg.maxHeight, 200.0, 1e-9);
 
-    EXPECT_NEAR(cfg.gpsResolutionCm, 10.0, 1e-9);
-    EXPECT_EQ  (cfg.mappingResolutionFactor, 2);
+    EXPECT_EQ(cfg.resX, 1);
+    EXPECT_EQ(cfg.resY, 0);
+    EXPECT_EQ(cfg.resHeight, 1);
 
-    // step = 10 / 2 = 5 cm
-    EXPECT_NEAR(cfg.stepX, 5.0, 1e-9);
-    EXPECT_NEAR(cfg.stepY, 5.0, 1e-9);
-    EXPECT_NEAR(cfg.stepZ, 5.0, 1e-9);
+    // Steps: res=1 → 0.1 cm, res=0 → 1.0 cm
+    EXPECT_NEAR(cfg.stepX, 0.1, 1e-9);
+    EXPECT_NEAR(cfg.stepY, 1.0, 1e-9);
+    EXPECT_NEAR(cfg.stepZ, 0.1, 1e-9);
 
     // Starting position parsed
     EXPECT_TRUE(cfg.startSet);
@@ -191,89 +168,45 @@ TEST(MissionConfig, ValidFile_AllKeysPresent)
     EXPECT_NEAR(cfg.startZ, 30.0, 1e-9);
 }
 
-// mapping_resolution_factor absent → defaults to 1
-TEST(MissionConfig, MappingFactorAbsent_DefaultsToOne)
-{
-    const std::string content =
-        "mission_config:\n"
-        "  max_steps: 2400\n"
-        "  boundaries:\n"
-        "    x_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    y_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    height_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 50\n"
-        "  gps_resolution_cm: 10\n";
-
-    MissionConfig cfg;
-    std::string errors;
-    parseMissionConfig(writeTempFile(content, ".yaml"), cfg, errors);
-
-    EXPECT_EQ  (cfg.mappingResolutionFactor, 1);
-    EXPECT_NEAR(cfg.stepX, 10.0, 1e-9);  // 10 / 1 = 10 cm
-}
-
-// start_x/y/z absent → startSet is false
+// start_x/y/z not present → startSet is false
 TEST(MissionConfig, NoStartPosition_StartSetFalse)
 {
-    const std::string content =
-        "mission_config:\n"
-        "  max_steps: 2400\n"
-        "  boundaries:\n"
-        "    x_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    y_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    height_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 50\n"
-        "  gps_resolution_cm: 10\n";
-
     MissionConfig cfg;
     std::string errors;
-    parseMissionConfig(writeTempFile(content, ".yaml"), cfg, errors);
+    parseMissionConfig(writeTempFile("min_x=0\nmax_x=100\n"), cfg, errors);
     EXPECT_FALSE(cfg.startSet);
 }
 
-// Partial start (only start_x_cm and start_y_cm, no start_z_cm) → startSet false
+// Partial start (only start_x and start_y, no start_z) → startSet false
 TEST(MissionConfig, PartialStartPosition_StartSetFalse)
 {
-    const std::string content =
-        "mission_config:\n"
-        "  max_steps: 2400\n"
-        "  boundaries:\n"
-        "    x_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    y_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 100\n"
-        "    height_boundary:\n"
-        "      min_cm: 0\n"
-        "      max_cm: 50\n"
-        "  gps_resolution_cm: 10\n"
-        "  start_x_cm: 5\n"
-        "  start_y_cm: 5\n";
-
     MissionConfig cfg;
     std::string errors;
-    parseMissionConfig(writeTempFile(content, ".yaml"), cfg, errors);
+    parseMissionConfig(writeTempFile("start_x=5\nstart_y=5\n"), cfg, errors);
     EXPECT_FALSE(cfg.startSet);  // all three required
 }
 
-// File does not exist → defaults, error logged
-TEST(MissionConfig, FileNotFound_UsesDefaults)
+// Negative resolution → clamped to 0
+TEST(MissionConfig, NegativeResolution_ClampedToZero)
 {
     MissionConfig cfg;
     std::string errors;
-    parseMissionConfig("no_such_file_xyz.yaml", cfg, errors);
+    parseMissionConfig(writeTempFile("res_x=-1\nres_y=-2\nres_height=-3\n"), cfg, errors);
+    EXPECT_EQ(cfg.resX, 0);
+    EXPECT_EQ(cfg.resY, 0);
+    EXPECT_EQ(cfg.resHeight, 0);
     EXPECT_FALSE(errors.empty());
+}
+
+// Windows-style \r\n line endings are handled
+TEST(MissionConfig, WindowsLineEndings)
+{
+    const std::string content = "min_x=-200\r\nmax_x=200\r\n";
+    MissionConfig cfg;
+    std::string errors;
+    parseMissionConfig(writeTempFile(content), cfg, errors);
+    EXPECT_NEAR(cfg.minX, -200.0, 1e-9);
+    EXPECT_NEAR(cfg.maxX,  200.0, 1e-9);
 }
 
 // ============================================================
@@ -282,7 +215,7 @@ TEST(MissionConfig, FileNotFound_UsesDefaults)
 
 TEST(ToGrid, StepOne_RoundsCorrectly)
 {
-    MissionConfig mc = makeDefaultMission();  // step=1 cm
+    MissionConfig mc = makeDefaultMission();  // stepX=stepY=stepZ=1
 
     GridPoint gp = toGrid(10.0, 20.0, 30.0, mc);
     EXPECT_EQ(gp.x, 10);
@@ -304,9 +237,9 @@ TEST(ToGrid, StepOne_RoundingHalfUp)
 TEST(ToGrid, FractionalStep)
 {
     MissionConfig mc;
-    mc.gpsResolutionCm         = 1.0;
-    mc.mappingResolutionFactor = 10;  // step = 0.1 cm
+    mc.resX = 1; mc.resY = 1; mc.resHeight = 1;
     mc.computeSteps();
+    // stepX = stepY = stepZ = 0.1
 
     // Use exact values to avoid floating-point rounding issues
     // 0.2 / 0.1 = 2.0 exactly
@@ -343,51 +276,3 @@ TEST(GridPoint, EqualityAndHash)
     // Different points should (usually) have different hashes
     EXPECT_NE(hasher(a), hasher(c));
 }
-
-    EXPECT_EQ(gp.y, 21);
-    EXPECT_EQ(gp.z, 31);
-}
-
-TEST(ToGrid, FractionalStep)
-{
-    MissionConfig mc;
-    mc.gpsResolutionCm         = 1.0;
-    mc.mappingResolutionFactor = 10;  // step = 0.1 cm
-    mc.computeSteps();
-
-    // Use exact values to avoid floating-point rounding issues
-    // 0.2 / 0.1 = 2.0 exactly
-    GridPoint gp = toGrid(0.2, 0.3, 0.4, mc);
-    EXPECT_EQ(gp.x, 2);
-    EXPECT_EQ(gp.y, 3);
-    EXPECT_EQ(gp.z, 4);
-}
-
-TEST(ToGrid, NegativeCoordinates)
-{
-    MissionConfig mc = makeDefaultMission();
-    mc.minX = -100.0;
-    mc.computeSteps();
-
-    GridPoint gp = toGrid(-50.0, 0.0, 0.0, mc);
-    EXPECT_EQ(gp.x, -50);
-    EXPECT_EQ(gp.y,   0);
-    EXPECT_EQ(gp.z,   0);
-}
-
-// GridPoint equality and hash
-TEST(GridPoint, EqualityAndHash)
-{
-    GridPoint a{1, 2, 3};
-    GridPoint b{1, 2, 3};
-    GridPoint c{1, 2, 4};
-
-    EXPECT_EQ(a, b);
-    EXPECT_NE(a, c);
-
-    GridPointHash hasher;
-    EXPECT_EQ(hasher(a), hasher(b));
-    // Different points should (usually) have different hashes
-    EXPECT_NE(hasher(a), hasher(c));
-}
-

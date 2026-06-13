@@ -2,7 +2,11 @@ simulation_config:
   map_filename: "../../data_maps/office_small.npy"
   map_resolution_cm: 10
   initial_drone_position:
-    x_cm: 50     # well inside the map (walls are at 0 and 300)
+    x_cm: 50
     y_cm: 50
     height_cm: 50
   initial_angle_deg: 0
+  map_axes_offset:
+    x_offset: 0
+    y_offset: 0
+    height_offset: 0

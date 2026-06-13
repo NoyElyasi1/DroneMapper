@@ -5,5 +5,8 @@ simulation_compositions:
         - "missions/mission_a.yaml"
   drone_configs:
     - "drone_configs/drone_small.yaml"
+    - "drone_configs/drone_large.yaml"
   lidar_configs:
     - "lidar_configs/lidar_a.yaml"
+    - "lidar_configs/lidar_b.yaml"
+# Above produces 4 simulation runs: 1 sim × 1 mission × 2 drones × 2 lidars

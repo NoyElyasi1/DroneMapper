@@ -25,4 +25,7 @@ namespace drone_mapper {
 [[nodiscard]] types::SimulationCompositionData parseCompositionConfig(const std::filesystem::path& path,
                                                                       std::string& errorsOut);
 
+[[nodiscard]] types::ComparisonConfigData parseComparisonConfig(const std::filesystem::path& path,
+                                                                std::string& errorsOut);
+
 } // namespace drone_mapper

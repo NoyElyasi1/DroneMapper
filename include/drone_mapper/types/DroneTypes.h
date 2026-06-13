@@ -3,12 +3,15 @@
 #include <drone_mapper/Units.h>
 
 #include <cstddef>
+#include <filesystem>
+#include <optional>
 #include <string>
 
 namespace drone_mapper::types {
 
 struct DroneConfigData {
-    PhysicalLength dimensions{};
+    std::filesystem::path config_file{};
+    PhysicalLength radius{}; // treated as a perfect sphere
     HorizontalAngle max_rotate{};
     PhysicalLength max_advance{};
     PhysicalLength max_elevate{};
@@ -31,6 +34,19 @@ struct MovementCommand {
     RotationDirection rotation = RotationDirection::Left;
     HorizontalAngle angle{};
     PhysicalLength distance{};
+};
+
+enum class AlgorithmStatus {
+    Working,
+    Finished,
+    FinishedWithUnmappableVoxels,
+};
+
+struct MappingStepCommand {
+    // Both fields are optional; if both provided, movement is performed before scan.
+    std::optional<MovementCommand> movement{};
+    std::optional<Orientation> scan_orientation{};
+    AlgorithmStatus status = AlgorithmStatus::Working;
 };
 
 struct MovementResult {

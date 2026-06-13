@@ -1,0 +1,34 @@
+comparison_config:
+  original:
+    map_res_cm: 10
+    map_offset:
+      x_offset: 0
+      y_offset: 0
+      height_offset: 0
+    map_boundaries:
+      x_boundary:
+        min_cm: 0
+        max_cm: 300
+      y_boundary:
+        min_cm: 0
+        max_cm: 300
+      height_boundary:
+        min_cm: 0
+        max_cm: 300
+
+  target:
+    map_res_cm: 10
+    map_offset:
+      x_offset: 0
+      y_offset: 0
+      height_offset: 0
+    map_boundaries:
+      x_boundary:
+        min_cm: 0
+        max_cm: 300
+      y_boundary:
+        min_cm: 0
+        max_cm: 300
+      height_boundary:
+        min_cm: 0
+        max_cm: 300

@@ -1,18 +1,24 @@
 #pragma once
 
 #include <drone_mapper/Units.h>
+#include <drone_mapper/types/MapTypes.h>
 
 #include <cstddef>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace drone_mapper::types {
 
-// Changed: boundaries removed — map bounds now live on MapConfig/IMap3D.
 struct MissionConfigData {
+    std::filesystem::path config_file{};
     std::size_t max_steps = 0;
     PhysicalLength gps_resolution{};
     double output_mapping_resolution_factor = 1.0;
+    // Optional: constrain the exploration zone to a sub-region of the map.
+    // When absent the full map boundaries (from MapConfig) are used.
+    std::optional<MappingBounds> exploration_boundaries{};
 };
 
 enum class MissionRunStatus {

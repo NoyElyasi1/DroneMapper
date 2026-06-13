@@ -13,6 +13,7 @@
 namespace drone_mapper::types {
 
 struct SimulationConfigData {
+    std::filesystem::path config_file{};
     std::filesystem::path map_filename{};
     PhysicalLength map_resolution{};
     // Offset: moves the (0,0,0) of the npy matrix to this world point.

@@ -302,7 +302,7 @@ bool Drone::navigateTo(const GridPoint& targetGrid)
 // ============================================================
 bool Drone::performStep()
 {
-    if (++stepCount_ > missionCfg_.maxSteps) return false;  // mission step limit
+    if (++stepCount_ > MAX_STEPS) return false;  // safety guard
 
     // ---- Current grid position ----
     const Position3D pos = posSensor_->getCurrentPosition();

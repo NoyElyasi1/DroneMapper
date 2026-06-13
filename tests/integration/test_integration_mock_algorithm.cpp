@@ -17,13 +17,13 @@ using ::testing::AtLeast;
 
 class MockAlgorithm : public IMappingAlgorithm {
 public:
-    MOCK_METHOD(types::MovementCommand, nextMove,
-                (const types::DroneState&, const types::LidarScanResult&), (override));
-    MOCK_METHOD(void, applyVoxelUpdates,
-                (const std::vector<types::MappedVoxel>&), (override));
+    MockAlgorithm(types::DroneConfigData d, const IMap3D& m)
+        : IMappingAlgorithm(d, m) {}
+    MOCK_METHOD(types::MappingStepCommand, nextStep,
+                (const types::DroneState&, const types::LidarScanResult*), (override));
 };
 
-class MockLidarFast2 : public ILidar {
+class MockLidarInt : public ILidar {
 public:
     MOCK_METHOD(types::LidarScanResult, scan, (Orientation), (const, override));
 };
@@ -32,7 +32,7 @@ namespace {
 
 types::DroneConfigData makeDrone() {
     types::DroneConfigData d;
-    d.dimensions=30.0*cm; d.max_rotate=45.0*horizontal_angle[deg];
+    d.radius=30.0*cm; d.max_rotate=45.0*horizontal_angle[deg];
     d.max_advance=50.0*cm; d.max_elevate=40.0*cm;
     return d;
 }
@@ -54,6 +54,8 @@ types::MissionConfigData makeMission(std::size_t steps = 5) {
 
 } // namespace
 
+// ---- Mock algorithm completes on first step ----
+
 TEST(Integration, MockAlgorithmDrivesCompletion) {
     auto cfg = makeMapConfig();
     auto gt = std::make_unique<Map3DImpl>(cfg);
@@ -64,13 +66,13 @@ TEST(Integration, MockAlgorithmDrivesCompletion) {
         Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]});
 
     auto movement = std::make_unique<MockMovement>(*gps, *gt, makeDrone());
-    auto lidar = std::make_unique<MockLidarFast2>();
-    auto algo = std::make_unique<MockAlgorithm>();
+    auto lidar = std::make_unique<MockLidarInt>();
+    auto algo = std::make_unique<MockAlgorithm>(makeDrone(), *output);
 
     EXPECT_CALL(*lidar, scan(_)).WillRepeatedly(Return(types::LidarScanResult{}));
-    EXPECT_CALL(*algo, applyVoxelUpdates(_)).Times(AtLeast(1));
-    EXPECT_CALL(*algo, nextMove(_, _))
-        .WillRepeatedly(Return(types::MovementCommand{types::MovementCommandType::Hover}));
+    EXPECT_CALL(*algo, nextStep(_, _))
+        .WillRepeatedly(Return(types::MappingStepCommand{
+            std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
 
     auto ctrl = std::make_unique<DroneControlImpl>(
         makeDrone(), makeMission(), *lidar, *gps, *movement, *output, *algo);
@@ -79,4 +81,105 @@ TEST(Integration, MockAlgorithmDrivesCompletion) {
     const auto result = mc.runMission();
     EXPECT_EQ(result.status, types::MissionRunStatus::Completed);
     EXPECT_EQ(result.steps, 1u);
+}
+
+// ---- Mock algorithm keeps working for N steps then finishes ----
+
+TEST(Integration, MockAlgorithmRunsMultipleStepsBeforeFinish) {
+    auto cfg = makeMapConfig();
+    auto gt = std::make_unique<Map3DImpl>(cfg);
+    auto output = std::make_unique<Map3DImpl>(cfg);
+
+    auto gps = std::make_unique<MockGPS>(
+        Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]});
+
+    auto movement = std::make_unique<MockMovement>(*gps, *gt, makeDrone());
+    auto lidar = std::make_unique<MockLidarInt>();
+    auto algo = std::make_unique<MockAlgorithm>(makeDrone(), *output);
+
+    EXPECT_CALL(*lidar, scan(_)).WillRepeatedly(Return(types::LidarScanResult{}));
+    {
+        using ::testing::InSequence;
+        InSequence seq;
+        EXPECT_CALL(*algo, nextStep(_, _)).Times(4)
+            .WillRepeatedly(Return(types::MappingStepCommand{
+                std::nullopt, std::nullopt, types::AlgorithmStatus::Working}));
+        EXPECT_CALL(*algo, nextStep(_, _))
+            .WillOnce(Return(types::MappingStepCommand{
+                std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
+    }
+
+    auto ctrl = std::make_unique<DroneControlImpl>(
+        makeDrone(), makeMission(10), *lidar, *gps, *movement, *output, *algo);
+
+    MissionControlImpl mc{makeMission(10), *ctrl};
+    const auto result = mc.runMission();
+    EXPECT_EQ(result.status, types::MissionRunStatus::Completed);
+    EXPECT_EQ(result.steps, 5u);
+}
+
+// ---- Mock algo with scan: lidar is queried ----
+
+TEST(Integration, MockAlgorithmWithScanCallsLidar) {
+    auto cfg = makeMapConfig();
+    auto gt = std::make_unique<Map3DImpl>(cfg);
+    auto output = std::make_unique<Map3DImpl>(cfg);
+
+    auto gps = std::make_unique<MockGPS>(
+        Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]});
+    auto movement = std::make_unique<MockMovement>(*gps, *gt, makeDrone());
+    auto lidar = std::make_unique<MockLidarInt>();
+    auto algo = std::make_unique<MockAlgorithm>(makeDrone(), *output);
+
+    // One scan then finish
+    EXPECT_CALL(*lidar, scan(_)).Times(AtLeast(1))
+        .WillRepeatedly(Return(types::LidarScanResult{}));
+    {
+        using ::testing::InSequence;
+        InSequence seq;
+        EXPECT_CALL(*algo, nextStep(_, _))
+            .WillOnce(Return(types::MappingStepCommand{
+                std::nullopt,
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]},
+                types::AlgorithmStatus::Working}));
+        EXPECT_CALL(*algo, nextStep(_, _))
+            .WillOnce(Return(types::MappingStepCommand{
+                std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
+    }
+
+    auto ctrl = std::make_unique<DroneControlImpl>(
+        makeDrone(), makeMission(10), *lidar, *gps, *movement, *output, *algo);
+
+    MissionControlImpl mc{makeMission(10), *ctrl};
+    const auto result = mc.runMission();
+    EXPECT_EQ(result.status, types::MissionRunStatus::Completed);
+}
+
+// ---- MaxSteps reached with always-working algorithm ----
+
+TEST(Integration, MockAlgorithmHitsMaxSteps) {
+    auto cfg = makeMapConfig();
+    auto gt = std::make_unique<Map3DImpl>(cfg);
+    auto output = std::make_unique<Map3DImpl>(cfg);
+
+    auto gps = std::make_unique<MockGPS>(
+        Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]});
+    auto movement = std::make_unique<MockMovement>(*gps, *gt, makeDrone());
+    auto lidar = std::make_unique<MockLidarInt>();
+    auto algo = std::make_unique<MockAlgorithm>(makeDrone(), *output);
+
+    EXPECT_CALL(*algo, nextStep(_, _))
+        .WillRepeatedly(Return(types::MappingStepCommand{
+            std::nullopt, std::nullopt, types::AlgorithmStatus::Working}));
+
+    auto ctrl = std::make_unique<DroneControlImpl>(
+        makeDrone(), makeMission(3), *lidar, *gps, *movement, *output, *algo);
+
+    MissionControlImpl mc{makeMission(3), *ctrl};
+    const auto result = mc.runMission();
+    EXPECT_EQ(result.status, types::MissionRunStatus::MaxSteps);
+    EXPECT_EQ(result.steps, 3u);
 }

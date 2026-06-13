@@ -15,7 +15,7 @@ MockMovement::MockMovement(MockGPS& gps,
 
 bool MockMovement::isPositionFree(double cx, double cy, double cz) const {
     const auto& cfg = map_.getMapConfig();
-    const double r   = drone_.dimensions.numerical_value_in(cm) / 2.0;
+    const double r   = drone_.radius.numerical_value_in(cm);
     const double res = cfg.resolution.numerical_value_in(cm);
 
     // Boundary check using map config

@@ -1,7 +1,7 @@
 #include <drone_mapper/MappingAlgorithmImpl.h>
+#include <drone_mapper/IMap3D.h>
 
 #include <cmath>
-#include <utility>
 
 namespace drone_mapper {
 
@@ -17,45 +17,45 @@ double normalizeAngle(double a) noexcept {
 
 } // namespace
 
-MappingAlgorithmImpl::MappingAlgorithmImpl(types::MissionConfigData mission,
-                                           types::DroneConfigData drone,
-                                           types::MapConfig map_config)
-    : mission_(std::move(mission))
-    , drone_(std::move(drone))
-    , map_config_(std::move(map_config))
-    , stepCm_(mission_.gps_resolution.numerical_value_in(cm))
-{}
-
 detail::GridPoint MappingAlgorithmImpl::toGrid(const Position3D& pos) const {
+    const double stepCm = _output_map.getMapConfig().resolution.numerical_value_in(cm);
     return {
-        static_cast<int>(std::round(pos.x.numerical_value_in(cm) / stepCm_)),
-        static_cast<int>(std::round(pos.y.numerical_value_in(cm) / stepCm_)),
-        static_cast<int>(std::round(pos.z.numerical_value_in(cm) / stepCm_)),
+        static_cast<int>(std::round(pos.x.numerical_value_in(cm) / stepCm)),
+        static_cast<int>(std::round(pos.y.numerical_value_in(cm) / stepCm)),
+        static_cast<int>(std::round(pos.z.numerical_value_in(cm) / stepCm)),
     };
 }
 
 bool MappingAlgorithmImpl::isInBounds(const GridPoint& gp) const {
-    const double cx = gp.x * stepCm_;
-    const double cy = gp.y * stepCm_;
-    const double cz = gp.z * stepCm_;
-    return cx >= map_config_.boundaries.min_x.numerical_value_in(cm)
-        && cx <= map_config_.boundaries.max_x.numerical_value_in(cm)
-        && cy >= map_config_.boundaries.min_y.numerical_value_in(cm)
-        && cy <= map_config_.boundaries.max_y.numerical_value_in(cm)
-        && cz >= map_config_.boundaries.min_height.numerical_value_in(cm)
-        && cz <= map_config_.boundaries.max_height.numerical_value_in(cm);
+    const double stepCm = _output_map.getMapConfig().resolution.numerical_value_in(cm);
+    const auto& b = _output_map.getMapConfig().boundaries;
+    const double cx = gp.x * stepCm;
+    const double cy = gp.y * stepCm;
+    const double cz = gp.z * stepCm;
+    return cx >= b.min_x.numerical_value_in(cm)
+        && cx <= b.max_x.numerical_value_in(cm)
+        && cy >= b.min_y.numerical_value_in(cm)
+        && cy <= b.max_y.numerical_value_in(cm)
+        && cz >= b.min_height.numerical_value_in(cm)
+        && cz <= b.max_height.numerical_value_in(cm);
 }
 
 bool MappingAlgorithmImpl::isOccupied(const GridPoint& gp) const {
-    auto it = internalMap_.find(gp);
-    return it != internalMap_.end() && it->second == types::VoxelOccupancy::Occupied;
+    const double stepCm = _output_map.getMapConfig().resolution.numerical_value_in(cm);
+    const Position3D pos{
+        gp.x * stepCm * x_extent[cm],
+        gp.y * stepCm * y_extent[cm],
+        gp.z * stepCm * z_extent[cm],
+    };
+    return _output_map.atVoxel(pos) == types::VoxelOccupancy::Occupied;
 }
 
 bool MappingAlgorithmImpl::findFrontier(const GridPoint& cur, GridPoint& out) const {
-    const double maxAdvCm  = drone_.max_advance.numerical_value_in(cm);
-    const double maxElevCm = drone_.max_elevate.numerical_value_in(cm);
-    const int navXY = std::max(1, static_cast<int>(std::round(maxAdvCm  / stepCm_)));
-    const int navZ  = std::max(1, static_cast<int>(std::round(maxElevCm / stepCm_)));
+    const double stepCm    = _output_map.getMapConfig().resolution.numerical_value_in(cm);
+    const double maxAdvCm  = _drone_config.max_advance.numerical_value_in(cm);
+    const double maxElevCm = _drone_config.max_elevate.numerical_value_in(cm);
+    const int navXY = std::max(1, static_cast<int>(std::round(maxAdvCm  / stepCm)));
+    const int navZ  = std::max(1, static_cast<int>(std::round(maxElevCm / stepCm)));
 
     const int DIRS[6][3] = {
         { navXY,  0,    0},
@@ -77,30 +77,21 @@ bool MappingAlgorithmImpl::findFrontier(const GridPoint& cur, GridPoint& out) co
     return false;
 }
 
-void MappingAlgorithmImpl::applyVoxelUpdates(const std::vector<types::MappedVoxel>& voxels) {
-    for (const auto& v : voxels) {
-        GridPoint gp = toGrid(v.position);
-        auto it = internalMap_.find(gp);
-        if (v.value == types::VoxelOccupancy::Occupied) {
-            internalMap_[gp] = types::VoxelOccupancy::Occupied;
-        } else if (v.value == types::VoxelOccupancy::Empty) {
-            if (it == internalMap_.end() || it->second != types::VoxelOccupancy::Occupied) {
-                internalMap_[gp] = types::VoxelOccupancy::Empty;
-            }
-        }
-    }
-}
-
-types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& state,
-                                                      const types::LidarScanResult& /*latest_scan*/)
+types::MappingStepCommand MappingAlgorithmImpl::nextStep(const types::DroneState& state,
+                                                         const types::LidarScanResult* /*latest_scan*/)
 {
+    // Always request a forward scan so DroneControlImpl updates the output_map.
+    const Orientation scan_dir{state.heading.horizontal, 0.0 * altitude_angle[deg]};
+
+    const double stepCm = _output_map.getMapConfig().resolution.numerical_value_in(cm);
+
     for (int safety = 0; safety < 20; ++safety) {
         const GridPoint curGrid = toGrid(state.position);
 
         switch (phase_) {
 
         case NavPhase::Done:
-            return types::MovementCommand{types::MovementCommandType::Hover};
+            return {std::nullopt, std::nullopt, types::AlgorithmStatus::Finished};
 
         case NavPhase::FindNext: {
             if (!visited_.count(curGrid)) {
@@ -119,32 +110,33 @@ types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& s
                 phase_ = NavPhase::Elevating;
             } else {
                 phase_ = NavPhase::Done;
-                return types::MovementCommand{types::MovementCommandType::Hover};
+                return {std::nullopt, scan_dir, types::AlgorithmStatus::Finished};
             }
             break;
         }
 
         case NavPhase::Elevating: {
-            const double targetZ = currentTarget_.z * stepCm_;
+            const double targetZ = currentTarget_.z * stepCm;
             const double curZ    = state.position.z.numerical_value_in(cm);
             const double dz      = targetZ - curZ;
             if (std::fabs(dz) > 0.5) {
-                const double maxEl = drone_.max_elevate.numerical_value_in(cm);
+                const double maxEl = _drone_config.max_elevate.numerical_value_in(cm);
                 const double move  = std::clamp(dz, -maxEl, maxEl);
-                return types::MovementCommand{
+                types::MovementCommand cmd{
                     types::MovementCommandType::Elevate,
                     types::RotationDirection::Left,
                     {},
                     move * cm,
                 };
+                return {cmd, scan_dir, types::AlgorithmStatus::Working};
             }
             phase_ = NavPhase::Rotating;
             break;
         }
 
         case NavPhase::Rotating: {
-            const double targetX = currentTarget_.x * stepCm_;
-            const double targetY = currentTarget_.y * stepCm_;
+            const double targetX = currentTarget_.x * stepCm;
+            const double targetY = currentTarget_.y * stepCm;
             const double curX    = state.position.x.numerical_value_in(cm);
             const double curY    = state.position.y.numerical_value_in(cm);
             const double xyDist  = std::hypot(targetX - curX, targetY - curY);
@@ -158,39 +150,39 @@ types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& s
             if (targetAngle < 0.0) targetAngle += 360.0;
             const double curAngle = state.heading.horizontal.numerical_value_in(deg);
             const double diff     = normalizeAngle(targetAngle - curAngle);
-            const double maxRot   = drone_.max_rotate.numerical_value_in(deg);
+            const double maxRot   = _drone_config.max_rotate.numerical_value_in(deg);
             if (std::fabs(diff) > 0.5) {
                 const double rotAmt = std::clamp(std::fabs(diff), 0.0, maxRot);
                 const auto dir = (diff > 0)
                     ? types::RotationDirection::Left
                     : types::RotationDirection::Right;
-                return types::MovementCommand{
+                types::MovementCommand cmd{
                     types::MovementCommandType::Rotate,
                     dir,
                     rotAmt * horizontal_angle[deg],
                     {},
                 };
+                return {cmd, scan_dir, types::AlgorithmStatus::Working};
             }
             phase_ = NavPhase::Advancing;
             break;
         }
 
         case NavPhase::Advancing: {
-            const double targetX = currentTarget_.x * stepCm_;
-            const double targetY = currentTarget_.y * stepCm_;
+            const double targetX = currentTarget_.x * stepCm;
+            const double targetY = currentTarget_.y * stepCm;
             const double curX    = state.position.x.numerical_value_in(cm);
             const double curY    = state.position.y.numerical_value_in(cm);
             const double xyDist  = std::hypot(targetX - curX, targetY - curY);
 
-            // Stuck detection
             if (curGrid == lastKnownGrid_) {
                 ++stuckCount_;
             } else {
-                stuckCount_     = 0;
-                lastKnownGrid_  = curGrid;
+                stuckCount_    = 0;
+                lastKnownGrid_ = curGrid;
             }
             if (stuckCount_ >= 3) {
-                internalMap_[currentTarget_] = types::VoxelOccupancy::Occupied;
+                // Mark target as blocked and re-plan
                 visited_.insert(currentTarget_);
                 stuckCount_ = 0;
                 phase_ = NavPhase::FindNext;
@@ -203,21 +195,22 @@ types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& s
                 phase_ = NavPhase::FindNext;
                 break;
             }
-            const double maxAdv = drone_.max_advance.numerical_value_in(cm);
+            const double maxAdv = _drone_config.max_advance.numerical_value_in(cm);
             const double move   = std::min(xyDist, maxAdv);
-            return types::MovementCommand{
+            types::MovementCommand cmd{
                 types::MovementCommandType::Advance,
                 types::RotationDirection::Left,
                 {},
                 move * cm,
             };
+            return {cmd, scan_dir, types::AlgorithmStatus::Working};
         }
 
         } // switch
     } // safety loop
 
     phase_ = NavPhase::Done;
-    return types::MovementCommand{types::MovementCommandType::Hover};
+    return {std::nullopt, std::nullopt, types::AlgorithmStatus::Finished};
 }
 
 } // namespace drone_mapper

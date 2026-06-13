@@ -2,6 +2,8 @@
 
 #include <drone_mapper/Units.h>
 
+#include <optional>
+
 namespace drone_mapper::types {
 
 enum class VoxelOccupancy {
@@ -31,6 +33,18 @@ struct MapConfig {
     MappingBounds boundaries{};
     Position3D offset{};
     PhysicalLength resolution{};
+};
+
+// Used by maps_comparison_main to configure each map when comparing.
+struct MapComparisonEntry {
+    PhysicalLength map_res{};
+    Position3D map_offset{};
+    std::optional<MappingBounds> map_boundaries{};
+};
+
+struct ComparisonConfigData {
+    MapComparisonEntry original{};
+    MapComparisonEntry target{};
 };
 
 } // namespace drone_mapper::types

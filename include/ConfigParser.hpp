@@ -3,41 +3,33 @@
 // ============================================================
 // ConfigParser.hpp — Configuration structures and file parser.
 //
-// File formats: YAML
+// File formats (key=value, one per line, '#' = comment):
 //
-// drone_config.yaml:
-//   drone_config:
-//     dimensions_cm: 30      # sphere diameter the drone can pass through
-//     max_rotate_deg: 45     # max rotation per command (degrees)
-//     max_advance_cm: 50     # max advance distance per command (cm)
-//     max_elevate_cm: 40     # max elevate distance per command (cm)
-//     # Lidar parameters (optional, kept for simulation fidelity):
-//     lidar_zmin_cm: 20
-//     lidar_zmax_cm: 120
-//     lidar_d: 2.5
-//     lidar_fovc: 5
+// drone_config.txt:
+//   width=30          # drone body width  (cm)
+//   length=30         # drone body length (cm)
+//   height=10         # drone body height (cm)
+//   max_rotate=90     # max rotation per command (degrees)
+//   max_advance=50    # max advance per command  (cm)
+//   max_elevate=30    # max elevate per command  (cm)
+//   lidar_zmin=20     # min measurable distance  (cm)
+//   lidar_zmax=120    # max operational range    (cm)
+//   lidar_d=2.5       # inter-circle spacing at zmin (cm)
+//   lidar_fovc=5      # number of beam circles (1 = central only)
 //
-// mission_config.yaml:
-//   mission_config:
-//     max_steps: 2400
-//     boundaries:
-//       x_boundary:
-//         min_cm: -500
-//         max_cm: 500
-//       y_boundary:
-//         min_cm: -500
-//         max_cm: 500
-//       height_boundary:
-//         min_cm: 0
-//         max_cm: 300
-//     gps_resolution_cm: 10        # GPS expected measurement precision
-//     mapping_resolution_factor: 1 # optional integer; defaults to 1
-//     # Optional starting position:
-//     start_x_cm: 0
-//     start_y_cm: 0
-//     start_z_cm: 5
-//
-// Grid step size = gps_resolution_cm / mapping_resolution_factor
+// mission_config.txt:
+//   min_x=-500        # mapping boundary (cm)
+//   max_x=500
+//   min_y=-500
+//   max_y=500
+//   min_height=0
+//   max_height=300
+//   res_x=0           # resolution: decimal places (0=1cm, 1=0.1cm)
+//   res_y=0
+//   res_height=0
+//   start_x=0         # initial drone position (cm); default = map centre
+//   start_y=0
+//   start_z=5         # default = min_height + drone_height/2 + 1
 //
 // Error handling: all missing or bad values fall back to the
 // defaults shown above. Errors are appended to errorsOut.
@@ -52,15 +44,14 @@ namespace dm {
 // DroneConfig — physical capabilities of the drone.
 // ============================================================
 struct DroneConfig {
-    // Bounding sphere diameter: the drone can pass through any
-    // gap of at least this diameter (cm).
-    Distance dimensions = 30.0 * cm;
+    Distance width      = 30.0 * cm;
+    Distance length     = 30.0 * cm;
+    Distance height     = 10.0 * cm;
 
-    Angle    maxRotate  = 45.0 * deg;
+    Angle    maxRotate  = 90.0 * deg;
     Distance maxAdvance = 50.0 * cm;
-    Distance maxElevate = 40.0 * cm;
+    Distance maxElevate = 30.0 * cm;
 
-    // Lidar sensor parameters
     Distance lidarZmin  = 20.0 * cm;
     Distance lidarZmax  = 120.0 * cm;
     double   lidarD     = 2.5;   // beam-circle spacing at Zmin (cm)
@@ -71,9 +62,6 @@ struct DroneConfig {
 // MissionConfig — spatial bounds, resolution and start pose.
 // ============================================================
 struct MissionConfig {
-    // Maximum number of drone steps before the simulation stops.
-    int maxSteps = 2400;
-
     // Mission boundaries (cm)
     double minX      = -500.0;
     double maxX      =  500.0;
@@ -82,29 +70,34 @@ struct MissionConfig {
     double minHeight =    0.0;
     double maxHeight =  300.0;
 
-    // GPS measurement precision (cm).
-    double gpsResolutionCm = 10.0;
+    // Resolution: number of decimal places.
+    //   0  -> grid step = 1 cm
+    //   1  -> grid step = 0.1 cm  etc.
+    int resX      = 0;
+    int resY      = 0;
+    int resHeight = 0;
 
-    // Optional integer factor: map resolution = gps_resolution / factor.
-    // Defaults to 1 (map resolution == GPS resolution).
-    int mappingResolutionFactor = 1;
+    // Computed grid step sizes (cm). Call computeSteps() after loading.
+    double stepX = 1.0;
+    double stepY = 1.0;
+    double stepZ = 1.0;
 
-    // Computed uniform grid step size (cm). Call computeSteps() after loading.
-    double stepX = 10.0;
-    double stepY = 10.0;
-    double stepZ = 10.0;
-
-    // Starting position. startSet = false means the Simulator will compute
-    // a sensible default automatically.
-    double startX   = 0.0;
-    double startY   = 0.0;
-    double startZ   = 0.0;
-    bool   startSet = false;
+    // Starting position. Use NaN as sentinel: if the value is NaN
+    // the Simulator will compute a sensible default automatically.
+    double startX = 0.0;
+    double startY = 0.0;
+    double startZ = 0.0;   // overridden if not set by user
+    bool   startSet = false; // true if start_x/y/z were read from file
 
     void computeSteps() noexcept {
-        const double factor = (mappingResolutionFactor > 0)
-            ? static_cast<double>(mappingResolutionFactor) : 1.0;
-        stepX = stepY = stepZ = gpsResolutionCm / factor;
+        auto decToStep = [](int dec) noexcept -> double {
+            double s = 1.0;
+            for (int i = 0; i < dec; ++i) s /= 10.0;
+            return s;
+        };
+        stepX = decToStep(resX);
+        stepY = decToStep(resY);
+        stepZ = decToStep(resHeight);
     }
 };
 

@@ -1,35 +1,7 @@
-<<<<<<< HEAD
-#include "ConfigParser.hpp"
-#include <yaml-cpp/yaml.h>
-#include <cmath>
-=======
 #include <drone_mapper/ConfigParser.h>
->>>>>>> fd647a1d3568830a42b0e5889c5b3a9021e753c3
 
 #include <yaml-cpp/yaml.h>
 
-<<<<<<< HEAD
-// ============================================================
-// YAML helper — safely extract a scalar value from a node,
-// falling back to 'fallback' and logging an error on any problem.
-// ============================================================
-
-static double yamlDouble(const YAML::Node& node,
-                         const std::string& path,
-                         double             fallback,
-                         std::string&       errorsOut)
-{
-    if (!node || !node.IsDefined() || node.IsNull()) {
-        errorsOut += "[ConfigParser] Missing key '" + path
-                   + "', using default " + std::to_string(fallback) + "\n";
-        return fallback;
-    }
-    try {
-        return node.as<double>();
-    } catch (...) {
-        errorsOut += "[ConfigParser] Bad value for '" + path
-                   + "', using default " + std::to_string(fallback) + "\n";
-=======
 #include <filesystem>
 #include <stdexcept>
 
@@ -47,28 +19,10 @@ double yamlDouble(const YAML::Node& node, const std::string& key,
     try { return node.as<double>(); }
     catch (...) {
         err += "[ConfigParser] Bad value for '" + key + "', using " + std::to_string(fallback) + "\n";
->>>>>>> fd647a1d3568830a42b0e5889c5b3a9021e753c3
         return fallback;
     }
 }
 
-<<<<<<< HEAD
-static int yamlInt(const YAML::Node& node,
-                   const std::string& path,
-                   int                fallback,
-                   std::string&       errorsOut)
-{
-    if (!node || !node.IsDefined() || node.IsNull()) {
-        errorsOut += "[ConfigParser] Missing key '" + path
-                   + "', using default " + std::to_string(fallback) + "\n";
-        return fallback;
-    }
-    try {
-        return node.as<int>();
-    } catch (...) {
-        errorsOut += "[ConfigParser] Bad value for '" + path
-                   + "', using default " + std::to_string(fallback) + "\n";
-=======
 int yamlInt(const YAML::Node& node, const std::string& key,
             int fallback, std::string& err)
 {
@@ -79,155 +33,10 @@ int yamlInt(const YAML::Node& node, const std::string& key,
     try { return node.as<int>(); }
     catch (...) {
         err += "[ConfigParser] Bad value for '" + key + "', using " + std::to_string(fallback) + "\n";
->>>>>>> fd647a1d3568830a42b0e5889c5b3a9021e753c3
         return fallback;
     }
 }
 
-<<<<<<< HEAD
-// ============================================================
-// parseDroneConfig
-// ============================================================
-bool parseDroneConfig(const std::string& filename,
-                      DroneConfig& cfg,
-                      std::string& errorsOut)
-{
-    YAML::Node root;
-    try {
-        root = YAML::LoadFile(filename);
-    } catch (const YAML::Exception& e) {
-        errorsOut += "[ConfigParser] Cannot parse '" + filename
-                   + "': " + e.what() + "\n";
-        return true;  // recoverable — caller uses defaults already in cfg
-    }
-
-    const YAML::Node dc = root["drone_config"];
-    if (!dc || !dc.IsDefined()) {
-        errorsOut += "[ConfigParser] Missing 'drone_config' root key in "
-                   + filename + "; using all defaults\n";
-        return true;
-    }
-
-    cfg.dimensions = yamlDouble(dc["dimensions_cm"],  "drone_config.dimensions_cm",  30.0, errorsOut) * cm;
-    cfg.maxRotate  = yamlDouble(dc["max_rotate_deg"], "drone_config.max_rotate_deg", 45.0, errorsOut) * deg;
-    cfg.maxAdvance = yamlDouble(dc["max_advance_cm"], "drone_config.max_advance_cm", 50.0, errorsOut) * cm;
-    cfg.maxElevate = yamlDouble(dc["max_elevate_cm"], "drone_config.max_elevate_cm", 40.0, errorsOut) * cm;
-
-    // Lidar parameters are optional; keep existing defaults if absent.
-    if (dc["lidar_zmin_cm"])
-        cfg.lidarZmin = yamlDouble(dc["lidar_zmin_cm"], "drone_config.lidar_zmin_cm", 20.0, errorsOut) * cm;
-    if (dc["lidar_zmax_cm"])
-        cfg.lidarZmax = yamlDouble(dc["lidar_zmax_cm"], "drone_config.lidar_zmax_cm", 120.0, errorsOut) * cm;
-    if (dc["lidar_d"])
-        cfg.lidarD    = yamlDouble(dc["lidar_d"],        "drone_config.lidar_d",        2.5,  errorsOut);
-    if (dc["lidar_fovc"])
-        cfg.lidarFOVC = yamlInt   (dc["lidar_fovc"],     "drone_config.lidar_fovc",     5,    errorsOut);
-
-    // Validate Lidar range order
-    if (cfg.lidarZmax.numerical_value_in(cm) <= cfg.lidarZmin.numerical_value_in(cm)) {
-        errorsOut += "[ConfigParser] lidar_zmax_cm must be > lidar_zmin_cm; swapping values\n";
-        std::swap(cfg.lidarZmax, cfg.lidarZmin);
-    }
-
-    // FOVC must be at least 1 (circle 0 = central beam only)
-    if (cfg.lidarFOVC < 1) {
-        errorsOut += "[ConfigParser] lidar_fovc < 1, setting to 1\n";
-        cfg.lidarFOVC = 1;
-    }
-
-    return true;  // always recoverable
-}
-
-// ============================================================
-// parseMissionConfig
-// ============================================================
-bool parseMissionConfig(const std::string& filename,
-                        MissionConfig& cfg,
-                        std::string& errorsOut)
-{
-    YAML::Node root;
-    try {
-        root = YAML::LoadFile(filename);
-    } catch (const YAML::Exception& e) {
-        errorsOut += "[ConfigParser] Cannot parse '" + filename
-                   + "': " + e.what() + "\n";
-        return true;  // recoverable
-    }
-
-    const YAML::Node mc = root["mission_config"];
-    if (!mc || !mc.IsDefined()) {
-        errorsOut += "[ConfigParser] Missing 'mission_config' root key in "
-                   + filename + "; using all defaults\n";
-        return true;
-    }
-
-    cfg.maxSteps = yamlInt(mc["max_steps"], "mission_config.max_steps", 2400, errorsOut);
-
-    const YAML::Node bounds = mc["boundaries"];
-    if (bounds && bounds.IsDefined()) {
-        const YAML::Node xb = bounds["x_boundary"];
-        const YAML::Node yb = bounds["y_boundary"];
-        const YAML::Node hb = bounds["height_boundary"];
-
-        cfg.minX      = yamlDouble(xb ? xb["min_cm"] : YAML::Node{}, "boundaries.x_boundary.min_cm",      -500.0, errorsOut);
-        cfg.maxX      = yamlDouble(xb ? xb["max_cm"] : YAML::Node{}, "boundaries.x_boundary.max_cm",       500.0, errorsOut);
-        cfg.minY      = yamlDouble(yb ? yb["min_cm"] : YAML::Node{}, "boundaries.y_boundary.min_cm",      -500.0, errorsOut);
-        cfg.maxY      = yamlDouble(yb ? yb["max_cm"] : YAML::Node{}, "boundaries.y_boundary.max_cm",       500.0, errorsOut);
-        cfg.minHeight = yamlDouble(hb ? hb["min_cm"] : YAML::Node{}, "boundaries.height_boundary.min_cm",    0.0, errorsOut);
-        cfg.maxHeight = yamlDouble(hb ? hb["max_cm"] : YAML::Node{}, "boundaries.height_boundary.max_cm",  300.0, errorsOut);
-    } else {
-        errorsOut += "[ConfigParser] Missing 'boundaries' section in " + filename + "; using defaults\n";
-    }
-
-    cfg.gpsResolutionCm = yamlDouble(mc["gps_resolution_cm"],
-                                     "mission_config.gps_resolution_cm", 10.0, errorsOut);
-
-    if (mc["mapping_resolution_factor"])
-        cfg.mappingResolutionFactor = yamlInt(mc["mapping_resolution_factor"],
-                                              "mission_config.mapping_resolution_factor", 1, errorsOut);
-
-    if (cfg.gpsResolutionCm <= 0.0) {
-        errorsOut += "[ConfigParser] gps_resolution_cm must be > 0; using 10.0\n";
-        cfg.gpsResolutionCm = 10.0;
-    }
-    if (cfg.mappingResolutionFactor < 1) {
-        errorsOut += "[ConfigParser] mapping_resolution_factor < 1; using 1\n";
-        cfg.mappingResolutionFactor = 1;
-    }
-
-    cfg.computeSteps();
-
-    // Optional starting position
-    const bool hasStart = mc["start_x_cm"] && mc["start_y_cm"] && mc["start_z_cm"];
-    if (hasStart) {
-        cfg.startSet = true;
-        cfg.startX   = yamlDouble(mc["start_x_cm"], "mission_config.start_x_cm", 0.0, errorsOut);
-        cfg.startY   = yamlDouble(mc["start_y_cm"], "mission_config.start_y_cm", 0.0, errorsOut);
-        cfg.startZ   = yamlDouble(mc["start_z_cm"], "mission_config.start_z_cm", 0.0, errorsOut);
-    }
-
-    return true;
-}
-
-// ============================================================
-// toGrid — convert continuous coordinates to integer grid indices.
-//
-// Division by step size then round-to-nearest ensures that
-// coordinates within ±0.5*step of a grid line map to the same
-// integer, giving stable voxel identity.
-// ============================================================
-GridPoint toGrid(double x, double y, double z,
-                 const MissionConfig& mc) noexcept
-{
-    return GridPoint{
-        static_cast<int>(std::round(x / mc.stepX)),
-        static_cast<int>(std::round(y / mc.stepY)),
-        static_cast<int>(std::round(z / mc.stepZ))
-    };
-}
-
-} // namespace dm
-=======
 std::string yamlStr(const YAML::Node& node, const std::string& key,
                     const std::string& fallback, std::string& err)
 {
@@ -255,7 +64,8 @@ types::DroneConfigData parseDroneConfig(const std::filesystem::path& path, std::
     if (!dc) { err += "[ConfigParser] Missing 'drone_config' in " + path.string() + "\n"; return {}; }
 
     types::DroneConfigData cfg;
-    cfg.dimensions  = yamlDouble(dc["dimensions_cm"],  "drone_config.dimensions_cm",  30.0, err) * cm;
+    cfg.config_file = path;
+    cfg.radius      = yamlDouble(dc["dimensions_cm"],  "drone_config.dimensions_cm",  30.0, err) * cm;
     cfg.max_rotate  = yamlDouble(dc["max_rotate_deg"], "drone_config.max_rotate_deg", 45.0, err) * horizontal_angle[deg];
     cfg.max_advance = yamlDouble(dc["max_advance_cm"], "drone_config.max_advance_cm", 50.0, err) * cm;
     cfg.max_elevate = yamlDouble(dc["max_elevate_cm"], "drone_config.max_elevate_cm", 40.0, err) * cm;
@@ -273,7 +83,8 @@ types::LidarConfigData parseLidarConfig(const std::filesystem::path& path, std::
     if (!lc) { err += "[ConfigParser] Missing 'lidar_config' in " + path.string() + "\n"; return {}; }
 
     types::LidarConfigData cfg;
-    cfg.z_min       = yamlDouble(lc["z_min_cm"],   "lidar_config.z_min_cm",   20.0, err) * cm;
+    cfg.config_file  = path;
+    cfg.z_min        = yamlDouble(lc["z_min_cm"],   "lidar_config.z_min_cm",   20.0, err) * cm;
     cfg.z_max       = yamlDouble(lc["z_max_cm"],   "lidar_config.z_max_cm",  120.0, err) * cm;
     cfg.d           = yamlDouble(lc["d_cm"],        "lidar_config.d_cm",       2.5,  err) * cm;
     cfg.fov_circles = static_cast<std::size_t>(yamlInt(lc["fov_circles"], "lidar_config.fov_circles", 5, err));
@@ -291,6 +102,7 @@ types::MissionConfigData parseMissionConfig(const std::filesystem::path& path, s
     if (!mc) { err += "[ConfigParser] Missing 'mission_config' in " + path.string() + "\n"; return {}; }
 
     types::MissionConfigData cfg;
+    cfg.config_file = path;
     cfg.max_steps = static_cast<std::size_t>(yamlInt(mc["max_steps"], "mission_config.max_steps", 2400, err));
     cfg.gps_resolution = yamlDouble(mc["gps_resolution_cm"], "mission_config.gps_resolution_cm", 10.0, err) * cm;
     cfg.output_mapping_resolution_factor = yamlDouble(mc["output_mapping_resolution_factor"],
@@ -298,6 +110,22 @@ types::MissionConfigData parseMissionConfig(const std::filesystem::path& path, s
     if (cfg.output_mapping_resolution_factor < 1.0) {
         err += "[ConfigParser] output_mapping_resolution_factor < 1, using 1\n";
         cfg.output_mapping_resolution_factor = 1.0;
+    }
+
+    // Optional exploration boundaries
+    const YAML::Node bounds = mc["boundaries"];
+    if (bounds && bounds.IsDefined()) {
+        types::MappingBounds b;
+        const YAML::Node xb = bounds["x_boundary"];
+        const YAML::Node yb = bounds["y_boundary"];
+        const YAML::Node hb = bounds["height_boundary"];
+        b.min_x      = yamlDouble(xb["min_cm"],    "boundaries.x_boundary.min_cm",      -1e9, err) * x_extent[cm];
+        b.max_x      = yamlDouble(xb["max_cm"],    "boundaries.x_boundary.max_cm",       1e9, err) * x_extent[cm];
+        b.min_y      = yamlDouble(yb["min_cm"],    "boundaries.y_boundary.min_cm",      -1e9, err) * y_extent[cm];
+        b.max_y      = yamlDouble(yb["max_cm"],    "boundaries.y_boundary.max_cm",       1e9, err) * y_extent[cm];
+        b.min_height = yamlDouble(hb["min_cm"], "boundaries.height_boundary.min_cm",  -1e9, err) * z_extent[cm];
+        b.max_height = yamlDouble(hb["max_cm"], "boundaries.height_boundary.max_cm",   1e9, err) * z_extent[cm];
+        cfg.exploration_boundaries = b;
     }
     return cfg;
 }
@@ -334,6 +162,7 @@ types::SimulationConfigData parseSimulationConfig(const std::filesystem::path& p
     if (!map_path.is_absolute()) map_path = path.parent_path() / map_path;
 
     types::SimulationConfigData cfg;
+    cfg.config_file            = path;
     cfg.map_filename           = map_path;
     cfg.map_resolution         = res * cm;
     cfg.map_offset             = Position3D{offX * x_extent[cm], offY * y_extent[cm], offZ * z_extent[cm]};
@@ -393,5 +222,57 @@ types::SimulationCompositionData parseCompositionConfig(const std::filesystem::p
     return data;
 }
 
+namespace {
+
+types::MapComparisonEntry parseMapComparisonEntry(const YAML::Node& node, const std::string& prefix,
+                                                  std::string& err)
+{
+    types::MapComparisonEntry entry;
+    entry.map_res = yamlDouble(node["map_res_cm"], prefix + ".map_res_cm", 1.0, err) * cm;
+
+    const YAML::Node off = node["map_offset"];
+    if (off && off.IsDefined()) {
+        const double ox = yamlDouble(off["x_offset"],      prefix + ".map_offset.x_offset",      0.0, err);
+        const double oy = yamlDouble(off["y_offset"],      prefix + ".map_offset.y_offset",      0.0, err);
+        const double oz = yamlDouble(off["height_offset"], prefix + ".map_offset.height_offset", 0.0, err);
+        entry.map_offset = Position3D{ox * x_extent[cm], oy * y_extent[cm], oz * z_extent[cm]};
+    }
+
+    const YAML::Node bounds = node["map_boundaries"];
+    if (bounds && bounds.IsDefined()) {
+        const YAML::Node xb = bounds["x_boundary"];
+        const YAML::Node yb = bounds["y_boundary"];
+        const YAML::Node hb = bounds["height_boundary"];
+        types::MappingBounds b;
+        b.min_x      = yamlDouble(xb["min_cm"],    prefix + ".x_boundary.min_cm",      -1e9, err) * x_extent[cm];
+        b.max_x      = yamlDouble(xb["max_cm"],    prefix + ".x_boundary.max_cm",       1e9, err) * x_extent[cm];
+        b.min_y      = yamlDouble(yb["min_cm"],    prefix + ".y_boundary.min_cm",      -1e9, err) * y_extent[cm];
+        b.max_y      = yamlDouble(yb["max_cm"],    prefix + ".y_boundary.max_cm",       1e9, err) * y_extent[cm];
+        b.min_height = yamlDouble(hb["min_cm"], prefix + ".height_boundary.min_cm",  -1e9, err) * z_extent[cm];
+        b.max_height = yamlDouble(hb["max_cm"], prefix + ".height_boundary.max_cm",   1e9, err) * z_extent[cm];
+        entry.map_boundaries = b;
+    }
+    return entry;
+}
+
+} // anonymous namespace
+
+types::ComparisonConfigData parseComparisonConfig(const std::filesystem::path& path, std::string& err) {
+    YAML::Node root;
+    try { root = YAML::LoadFile(path.string()); }
+    catch (const YAML::Exception& e) {
+        err += "[ConfigParser] Cannot parse comparison config '" + path.string() + "': " + e.what() + "\n";
+        return {};
+    }
+    const YAML::Node cc = root["comparison_config"];
+    if (!cc) { err += "[ConfigParser] Missing 'comparison_config' in " + path.string() + "\n"; return {}; }
+
+    types::ComparisonConfigData data;
+    if (cc["original"] && cc["original"].IsDefined())
+        data.original = parseMapComparisonEntry(cc["original"], "original", err);
+    if (cc["target"] && cc["target"].IsDefined())
+        data.target = parseMapComparisonEntry(cc["target"], "target", err);
+    return data;
+}
+
 } // namespace drone_mapper
->>>>>>> fd647a1d3568830a42b0e5889c5b3a9021e753c3

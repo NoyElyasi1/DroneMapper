@@ -27,17 +27,19 @@ MovementDriverMock::MovementDriverMock(
 // ============================================================
 bool MovementDriverMock::isPositionFree(double cx, double cy, double cz) const
 {
-    const double r = droneCfg_.dimensions.numerical_value_in(cm) / 2.0;
+    const double hw = droneCfg_.width.numerical_value_in(cm)  / 2.0;
+    const double hl = droneCfg_.length.numerical_value_in(cm) / 2.0;
+    const double hh = droneCfg_.height.numerical_value_in(cm) / 2.0;
 
     // Boundary check: drone body must lie fully inside the mission area
-    if (cx - r < missionCfg_.minX || cx + r > missionCfg_.maxX) return false;
-    if (cy - r < missionCfg_.minY || cy + r > missionCfg_.maxY) return false;
-    if (cz - r < missionCfg_.minHeight || cz + r > missionCfg_.maxHeight) return false;
+    if (cx - hw < missionCfg_.minX || cx + hw > missionCfg_.maxX) return false;
+    if (cy - hl < missionCfg_.minY || cy + hl > missionCfg_.maxY) return false;
+    if (cz - hh < missionCfg_.minHeight || cz + hh > missionCfg_.maxHeight) return false;
 
     // Collision check: sample every voxel the drone body might overlap
-    for (double dx = -r; dx <= r + 1e-9; dx += missionCfg_.stepX) {
-        for (double dy = -r; dy <= r + 1e-9; dy += missionCfg_.stepY) {
-            for (double dz = -r; dz <= r + 1e-9; dz += missionCfg_.stepZ) {
+    for (double dx = -hw; dx <= hw + 1e-9; dx += missionCfg_.stepX) {
+        for (double dy = -hl; dy <= hl + 1e-9; dy += missionCfg_.stepY) {
+            for (double dz = -hh; dz <= hh + 1e-9; dz += missionCfg_.stepZ) {
                 const GridPoint gp = toGrid(cx + dx, cy + dy, cz + dz, missionCfg_);
                 if (groundTruth_->getCell(gp) == static_cast<int>(CellStatus::Occupied)) {
                     return false;  // collision detected

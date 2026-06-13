@@ -3,7 +3,6 @@
 #include <drone_mapper/IMappingAlgorithm.h>
 
 #include <stack>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace drone_mapper {
@@ -29,13 +28,10 @@ struct GridPointHash {
 
 class MappingAlgorithmImpl final : public IMappingAlgorithm {
 public:
-    MappingAlgorithmImpl(types::MissionConfigData mission,
-                         types::DroneConfigData drone,
-                         types::MapConfig map_config);
+    using IMappingAlgorithm::IMappingAlgorithm;
 
-    [[nodiscard]] types::MovementCommand nextMove(const types::DroneState& state,
-                                                  const types::LidarScanResult& latest_scan) override;
-    void applyVoxelUpdates(const std::vector<types::MappedVoxel>& voxels) override;
+    [[nodiscard]] types::MappingStepCommand nextStep(const types::DroneState& state,
+                                                     const types::LidarScanResult* latest_scan) override;
 
 private:
     enum class NavPhase { FindNext, Elevating, Rotating, Advancing, Done };
@@ -44,11 +40,6 @@ private:
     [[nodiscard]] bool findFrontier(const detail::GridPoint& cur, detail::GridPoint& out) const;
     [[nodiscard]] bool isOccupied(const detail::GridPoint& gp) const;
     [[nodiscard]] bool isInBounds(const detail::GridPoint& gp) const;
-
-    types::MissionConfigData mission_;
-    types::DroneConfigData drone_;
-    types::MapConfig map_config_;
-    double stepCm_;
 
     NavPhase phase_ = NavPhase::FindNext;
     detail::GridPoint currentTarget_{};
@@ -59,7 +50,6 @@ private:
 
     std::stack<detail::GridPoint> backtrackStack_;
     std::unordered_set<detail::GridPoint, detail::GridPointHash> visited_;
-    std::unordered_map<detail::GridPoint, types::VoxelOccupancy, detail::GridPointHash> internalMap_;
 };
 
 } // namespace drone_mapper
