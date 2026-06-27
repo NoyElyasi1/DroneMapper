@@ -79,7 +79,7 @@ double scoreOneTarget(const IMap3D& ground_truth, const IMap3D& drone_map) {
             if (ground_truth.atVoxel(world) != types::VoxelOccupancy::Occupied)
                 ++drone_empty_correct;
         }
-        if (dm_val == types::VoxelOccupancy::Empty || dm_val == types::VoxelOccupancy::Occupied)
+        if (dm_val != types::VoxelOccupancy::Unmapped && dm_val != types::VoxelOccupancy::OutOfBounds)
             ++mapped_cells;
     }
 

@@ -48,10 +48,7 @@ types::DroneStepResult DroneControlImpl::step() {
     // 3. Execute scan if the algorithm requested one, then update the output map.
     if (cmd.scan_orientation) {
         auto hits = lidar_.scan(*cmd.scan_orientation);
-        const auto voxels = ScanResultToVoxels::convert(gps_.position(), gps_.heading(), hits);
-        for (const auto& v : voxels) {
-            output_map_.set(v.position, v.value);
-        }
+        ScanResultToVoxels::applyToMap(output_map_, gps_.position(), gps_.heading(), hits, lidar_.config());
         last_scan_ = std::move(hits);
     } else {
         last_scan_.reset();

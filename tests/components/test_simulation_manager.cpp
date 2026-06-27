@@ -33,12 +33,15 @@ types::SimulationCompositionData makeComposition(int n_sims = 1,
 {
     types::SimulationCompositionData comp;
     comp.composition_file = "test.yaml";
-    for (int i = 0; i < n_sims; ++i) comp.simulations.push_back({});
-    for (int i = 0; i < n_missions; ++i) {
-        types::MissionConfigData m;
-        m.max_steps = 10; m.gps_resolution = 10.0*cm;
-        m.output_mapping_resolution_factor = 1.0;
-        comp.missions.push_back(m);
+
+    types::MissionConfigData m;
+    m.max_steps = 10; m.gps_resolution = 10.0*cm;
+    m.output_mapping_resolution_factor = 1.0;
+    std::vector<types::MissionConfigData> mission_list;
+    for (int i = 0; i < n_missions; ++i) mission_list.push_back(m);
+
+    for (int i = 0; i < n_sims; ++i) {
+        comp.simulation_mission_groups.emplace_back(types::SimulationConfigData{}, mission_list);
     }
     for (int i = 0; i < n_drones; ++i) comp.drones.push_back({});
     for (int i = 0; i < n_lidars; ++i) comp.lidars.push_back({});

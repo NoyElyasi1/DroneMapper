@@ -33,32 +33,32 @@ types::SimulationManagerReport SimulationManager::run(
     report.score_range       = {0.0, 100.0};
     report.error_score       = -1;
 
-    for (const auto& simulation : composition.simulations) {
-        for (const auto& mission : composition.missions) {
-            for (const auto& drone : composition.drones) {
-                for (const auto& lidar_cfg : composition.lidars) {
-                    try {
-                        auto run_obj = run_factory_->create(
-                            simulation, mission, drone, lidar_cfg, output_path);
-                        report.runs.push_back(run_obj->run());
-                    } catch (const std::exception& ex) {
-                        types::SimulationResult failed;
-                        failed.simulation_config = simulation;
-                        failed.mission_config    = mission;
-                        failed.drone_config      = drone;
-                        failed.lidar_config      = lidar_cfg;
-                        failed.mission_score     = -1.0;
-                        failed.mission_results.push_back({
-                            types::MissionRunStatus::Error,
-                            0,
-                            {types::ErrorRef{"SIM_FACTORY_ERROR", ex.what()}}
-                        });
-                        report.runs.push_back(std::move(failed));
+    for (const auto& [simulation, missions] : composition.simulation_mission_groups) {
+            for (const auto& mission : missions) {
+                for (const auto& drone : composition.drones) {
+                    for (const auto& lidar_cfg : composition.lidars) {
+                        try {
+                            auto run_obj = run_factory_->create(
+                                simulation, mission, drone, lidar_cfg, output_path);
+                            report.runs.push_back(run_obj->run());
+                        } catch (const std::exception& ex) {
+                            types::SimulationResult failed;
+                            failed.simulation_config = simulation;
+                            failed.mission_config    = mission;
+                            failed.drone_config      = drone;
+                            failed.lidar_config      = lidar_cfg;
+                            failed.mission_score     = -1.0;
+                            failed.mission_results.push_back({
+                                types::MissionRunStatus::Error,
+                                0,
+                                {types::ErrorRef{"SIM_FACTORY_ERROR", ex.what()}}
+                            });
+                            report.runs.push_back(std::move(failed));
+                        }
                     }
                 }
             }
         }
-    }
 
     return report;
 }

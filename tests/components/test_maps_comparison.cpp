@@ -159,3 +159,76 @@ TEST(MapsComparison, FalsePositivesReduceScore) {
     EXPECT_GE(scores_perfect[0], scores_fp[0])
         << "False positives should not increase score";
 }
+
+// ---- Exact score = 100 for non-pointer-identical copies ----
+
+TEST(MapsComparison, CopiedMapScores100) {
+    // Build two separate Map3DImpl objects with identical voxel content:
+    // some cells Occupied, remaining cells explicitly Empty, giving full coverage.
+    types::MapConfig cfg = makeConfig();
+    Map3DImpl gt{cfg};
+    Map3DImpl copy{cfg};
+
+    for (int x = 0; x <= 100; x += 10)
+    for (int y = 0; y <= 100; y += 10)
+    for (int z = 0; z <= 100; z += 10) {
+        const Position3D p{static_cast<double>(x)*x_extent[cm],
+                           static_cast<double>(y)*y_extent[cm],
+                           static_cast<double>(z)*z_extent[cm]};
+        // Alternate: even (x/10) → Occupied, odd → Empty
+        const auto occ = ((x / 10) % 2 == 0)
+            ? types::VoxelOccupancy::Occupied
+            : types::VoxelOccupancy::Empty;
+        gt.set(p, occ);
+        copy.set(p, occ);
+    }
+    const auto scores = MapsComparison::compare(gt, {&copy});
+    ASSERT_EQ(scores.size(), 1u);
+    EXPECT_NEAR(scores[0], 100.0, 1e-3);
+}
+
+// ---- Partial mapping scores between 0 and perfect ----
+
+TEST(MapsComparison, PartialMappingScoresBetweenZeroAndPerfect) {
+    Map3DImpl gt{makeConfig()};
+    Map3DImpl full{makeConfig()};
+    Map3DImpl half{makeConfig()};
+
+    // 6 occupied voxels in GT
+    const std::vector<Position3D> pts = {
+        {10.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        {20.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        {30.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        {40.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        {50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+        {60.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+    };
+    for (const auto& p : pts) {
+        gt.set(p, types::VoxelOccupancy::Occupied);
+        full.set(p, types::VoxelOccupancy::Occupied);
+    }
+    // half only maps 3 of 6
+    for (std::size_t i = 0; i < 3; ++i) {
+        half.set(pts[i], types::VoxelOccupancy::Occupied);
+    }
+
+    const auto scores_full = MapsComparison::compare(gt, {&full});
+    const auto scores_half = MapsComparison::compare(gt, {&half});
+    ASSERT_EQ(scores_full.size(), 1u);
+    ASSERT_EQ(scores_half.size(), 1u);
+    EXPECT_GT(scores_full[0], scores_half[0])
+        << "Perfect mapping should score higher than partial mapping";
+    EXPECT_GE(scores_half[0], 0.0);
+    EXPECT_LE(scores_half[0], 100.0);
+}
+
+// ---- empty vs empty GT → reasonable non-negative score ----
+
+TEST(MapsComparison, EmptyDroneVsEmptyGTIsNonNegative) {
+    Map3DImpl gt{makeConfig()};    // no occupied voxels
+    Map3DImpl dm{makeConfig()};    // no occupied voxels
+    const auto scores = MapsComparison::compare(gt, {&dm});
+    ASSERT_EQ(scores.size(), 1u);
+    EXPECT_GE(scores[0], 0.0);
+    EXPECT_LE(scores[0], 100.0);
+}

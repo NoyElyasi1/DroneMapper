@@ -124,6 +124,19 @@ types::MapConfig Map3DImpl::getMapConfig() const {
     return config_;
 }
 
+bool Map3DImpl::isInBounds(const Position3D& pos) const {
+    const auto& b = config_.boundaries;
+    const double px = pos.x.numerical_value_in(cm);
+    const double py = pos.y.numerical_value_in(cm);
+    const double pz = pos.z.numerical_value_in(cm);
+    return px >= b.min_x.numerical_value_in(cm)
+        && px <= b.max_x.numerical_value_in(cm)
+        && py >= b.min_y.numerical_value_in(cm)
+        && py <= b.max_y.numerical_value_in(cm)
+        && pz >= b.min_height.numerical_value_in(cm)
+        && pz <= b.max_height.numerical_value_in(cm);
+}
+
 void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
     const double res = config_.resolution.numerical_value_in(cm);
     const double ox  = config_.offset.x.numerical_value_in(cm);

@@ -18,7 +18,7 @@ using ::testing::AtLeast;
 class MockAlgorithm : public IMappingAlgorithm {
 public:
     MockAlgorithm(types::DroneConfigData d, const IMap3D& m)
-        : IMappingAlgorithm(d, m) {}
+        : IMappingAlgorithm({}, {}, d, m) {}
     MOCK_METHOD(types::MappingStepCommand, nextStep,
                 (const types::DroneState&, const types::LidarScanResult*), (override));
 };
@@ -26,6 +26,7 @@ public:
 class MockLidarInt : public ILidar {
 public:
     MOCK_METHOD(types::LidarScanResult, scan, (Orientation), (const, override));
+    MOCK_METHOD(types::LidarConfigData, config, (), (const, override));
 };
 
 namespace {

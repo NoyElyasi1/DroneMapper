@@ -112,7 +112,7 @@ types::MissionConfigData parseMissionConfig(const std::filesystem::path& path, s
         cfg.output_mapping_resolution_factor = 1.0;
     }
 
-    // Optional exploration boundaries
+    // Mission boundaries (used for output map)
     const YAML::Node bounds = mc["boundaries"];
     if (bounds && bounds.IsDefined()) {
         types::MappingBounds b;
@@ -125,7 +125,7 @@ types::MissionConfigData parseMissionConfig(const std::filesystem::path& path, s
         b.max_y      = yamlDouble(yb["max_cm"],    "boundaries.y_boundary.max_cm",       1e9, err) * y_extent[cm];
         b.min_height = yamlDouble(hb["min_cm"], "boundaries.height_boundary.min_cm",  -1e9, err) * z_extent[cm];
         b.max_height = yamlDouble(hb["max_cm"], "boundaries.height_boundary.max_cm",   1e9, err) * z_extent[cm];
-        cfg.exploration_boundaries = b;
+        cfg.mission_bounds = b;
     }
     return cfg;
 }
@@ -184,41 +184,35 @@ types::SimulationCompositionData parseCompositionConfig(const std::filesystem::p
 
     const std::filesystem::path base = path.parent_path();
 
-    std::vector<types::SimulationConfigData> simulations;
-    std::vector<types::MissionConfigData> missions;
+    types::SimulationCompositionData data;
+    data.composition_file = path;
 
     for (const auto& sim_entry : comp["simulations"]) {
         std::filesystem::path sp{sim_entry["simulation_config"].as<std::string>()};
         if (!sp.is_absolute()) sp = base / sp;
-        simulations.push_back(parseSimulationConfig(sp, err));
+        types::SimulationConfigData sim_cfg = parseSimulationConfig(sp, err);
 
+        std::vector<types::MissionConfigData> missions_for_sim;
         for (const auto& mf : sim_entry["mission_configs"]) {
             std::filesystem::path mp{mf.as<std::string>()};
             if (!mp.is_absolute()) mp = base / mp;
-            missions.push_back(parseMissionConfig(mp, err));
+            missions_for_sim.push_back(parseMissionConfig(mp, err));
         }
+        data.simulation_mission_groups.emplace_back(std::move(sim_cfg), std::move(missions_for_sim));
     }
 
-    std::vector<types::DroneConfigData> drones;
     for (const auto& df : comp["drone_configs"]) {
         std::filesystem::path dp{df.as<std::string>()};
         if (!dp.is_absolute()) dp = base / dp;
-        drones.push_back(parseDroneConfig(dp, err));
+        data.drones.push_back(parseDroneConfig(dp, err));
     }
 
-    std::vector<types::LidarConfigData> lidars;
     for (const auto& lf : comp["lidar_configs"]) {
         std::filesystem::path lp{lf.as<std::string>()};
         if (!lp.is_absolute()) lp = base / lp;
-        lidars.push_back(parseLidarConfig(lp, err));
+        data.lidars.push_back(parseLidarConfig(lp, err));
     }
 
-    types::SimulationCompositionData data;
-    data.composition_file = path;
-    data.simulations = std::move(simulations);
-    data.missions    = std::move(missions);
-    data.drones      = std::move(drones);
-    data.lidars      = std::move(lidars);
     return data;
 }
 

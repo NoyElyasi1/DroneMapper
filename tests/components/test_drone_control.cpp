@@ -17,12 +17,13 @@ using ::testing::StrictMock;
 class MockLidarFast : public ILidar {
 public:
     MOCK_METHOD(types::LidarScanResult, scan, (Orientation), (const, override));
+    MOCK_METHOD(types::LidarConfigData, config, (), (const, override));
 };
 
 class MockMappingAlgorithm : public IMappingAlgorithm {
 public:
     MockMappingAlgorithm(types::DroneConfigData d, const IMap3D& m)
-        : IMappingAlgorithm(d, m) {}
+        : IMappingAlgorithm({}, {}, d, m) {}
     MOCK_METHOD(types::MappingStepCommand, nextStep,
                 (const types::DroneState&, const types::LidarScanResult*), (override));
 };
@@ -280,4 +281,80 @@ TEST(DroneControl, NextStepReceivesNullScanOnFirstCall) {
 
     DroneControlImpl ctrl{makeDrone(), makeMission(), lidar, gps, movement, output_map, algo};
     ctrl.step();
+}
+
+// ---- Elevate command forwarded ----
+
+TEST(DroneControl, ElevateCommandCallsMovementElevate) {
+    Map3DImpl map{makeMapConfig()};
+    MockGPS gps{Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 50.0*z_extent[cm]},
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}};
+    Map3DImpl output_map{makeMapConfig()};
+    MockLidarFast lidar;
+    MockMappingAlgorithm algo{makeDrone(), output_map};
+
+    StrictMock<SpyMovement> spy;
+    EXPECT_CALL(spy, elevate(_))
+        .WillOnce(Return(types::MovementResult{true, {}}));
+
+    types::MovementCommand mv;
+    mv.type     = types::MovementCommandType::Elevate;
+    mv.distance = 20.0 * cm;
+    EXPECT_CALL(algo, nextStep(_, _))
+        .WillOnce(Return(types::MappingStepCommand{mv, std::nullopt, types::AlgorithmStatus::Finished}));
+
+    DroneControlImpl ctrl{makeDrone(), makeMission(), lidar, gps, spy, output_map, algo};
+    ctrl.step();
+}
+
+// ---- After scan step, next nextStep call receives non-null scan ----
+
+TEST(DroneControl, NextStepReceivesNonNullScanAfterScanStep) {
+    Map3DImpl map{makeMapConfig()};
+    MockGPS gps{Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 50.0*z_extent[cm]},
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}};
+    MockMovement movement{gps, map, makeDrone()};
+    Map3DImpl output_map{makeMapConfig()};
+    MockLidarFast lidar;
+    MockMappingAlgorithm algo{makeDrone(), output_map};
+
+    const Orientation scan_dir{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]};
+    // Step 1: algo requests a scan
+    EXPECT_CALL(lidar, scan(_)).WillRepeatedly(Return(types::LidarScanResult{}));
+    testing::Sequence seq;
+    EXPECT_CALL(algo, nextStep(_, nullptr)).InSequence(seq)
+        .WillOnce(Return(types::MappingStepCommand{
+            std::nullopt, scan_dir, types::AlgorithmStatus::Working}));
+    // Step 2: algo must receive the non-null scan result from step 1
+    EXPECT_CALL(algo, nextStep(_, testing::Ne(nullptr))).InSequence(seq)
+        .WillOnce(Return(types::MappingStepCommand{
+            std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
+
+    DroneControlImpl ctrl{makeDrone(), makeMission(), lidar, gps, movement, output_map, algo};
+    ctrl.step();  // step 1 — scan requested, result stored
+    ctrl.step();  // step 2 — algo receives the stored scan
+}
+
+// ---- State position is from GPS ----
+
+TEST(DroneControl, StatePositionReflectsGPSAfterMove) {
+    Map3DImpl map{makeMapConfig()};
+    MockGPS gps{Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 50.0*z_extent[cm]},
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}};
+    MockMovement movement{gps, map, makeDrone()};
+    Map3DImpl output_map{makeMapConfig()};
+    MockLidarFast lidar;
+    MockMappingAlgorithm algo{makeDrone(), output_map};
+
+    EXPECT_CALL(algo, nextStep(_, _))
+        .WillRepeatedly(Return(types::MappingStepCommand{
+            std::nullopt, std::nullopt, types::AlgorithmStatus::Working}));
+
+    DroneControlImpl ctrl{makeDrone(), makeMission(), lidar, gps, movement, output_map, algo};
+
+    // Manually move GPS position and verify ctrl.state() reflects the change
+    gps.setPosition(Position3D{30.0*x_extent[cm], 40.0*y_extent[cm], 50.0*z_extent[cm]});
+    const auto s = ctrl.state();
+    EXPECT_NEAR(s.position.x.numerical_value_in(cm), 30.0, 1e-6);
+    EXPECT_NEAR(s.position.y.numerical_value_in(cm), 40.0, 1e-6);
 }

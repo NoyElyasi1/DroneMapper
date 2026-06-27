@@ -173,3 +173,123 @@ TEST(MockLidar, HitBelowZminReturnsZeroDistance) {
     // The voxel is at 5 cm which is within z_min=20 cm → distance should be 0
     EXPECT_NEAR(result[0].distance.numerical_value_in(cm), 0.0, 1e-6);
 }
+
+// ---- Exact distance to obstacle ----
+
+TEST(MockLidar, ExactDistanceToObstacleAhead) {
+    // Drone at (50,50,50), obstacle at (150,50,50) = 100 cm ahead (east).
+    Map3DImpl map{makeBoundsConfig()};
+    map.set(Position3D{150.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+            types::VoxelOccupancy::Occupied);
+
+    MockGPS gps{Position3D{50.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+                Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}};
+    MockLidar lidar{makeLidar(1), map, gps};
+
+    const auto result = lidar.scan(Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]});
+    ASSERT_FALSE(result.empty());
+    // Distance should be close to 100 cm; tolerance = half-voxel (5 cm) + 1 step margin
+    EXPECT_NEAR(result[0].distance.numerical_value_in(cm), 100.0, 6.0)
+        << "Expected ~100 cm to obstacle";
+}
+
+// ---- Obstacle just within z_max is detected ----
+
+TEST(MockLidar, ObstacleJustWithinZmaxIsDetected) {
+    // z_max = 120 cm, place obstacle at 110 cm (safely within range)
+    Map3DImpl map{makeBoundsConfig()};
+    map.set(Position3D{160.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+            types::VoxelOccupancy::Occupied);
+
+    MockGPS gps{Position3D{50.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+                Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}};
+    MockLidar lidar{makeLidar(1), map, gps};
+
+    const auto result = lidar.scan(Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]});
+    ASSERT_FALSE(result.empty());
+    const double d = result[0].distance.numerical_value_in(cm);
+    EXPECT_LT(d, 120.0) << "Obstacle within z_max should be detected (distance < z_max)";
+    EXPECT_GT(d, 0.0);
+}
+
+// ---- Obstacle beyond z_max is NOT detected ----
+
+TEST(MockLidar, ObstacleBeyondZmaxNotDetected) {
+    // z_max = 120 cm; obstacle at 200 cm (beyond range)
+    Map3DImpl map{makeBoundsConfig()};
+    map.set(Position3D{260.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+            types::VoxelOccupancy::Occupied);
+
+    MockGPS gps{Position3D{50.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+                Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}};
+    MockLidar lidar{makeLidar(1), map, gps};
+
+    const auto result = lidar.scan(Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]});
+    ASSERT_FALSE(result.empty());
+    // Nothing within z_max → max double distance
+    EXPECT_GT(result[0].distance.numerical_value_in(cm), 1e100)
+        << "Obstacle beyond z_max should not be detected";
+}
+
+// ---- config() returns configured data ----
+
+TEST(MockLidar, ConfigReturnsConfiguredData) {
+    Map3DImpl map{makeBoundsConfig()};
+    MockGPS gps{Position3D{}, Orientation{}};
+    const auto lidar_cfg = types::LidarConfigData{{}, 15.0*cm, 90.0*cm, 3.0*cm, 2};
+    MockLidar lidar{lidar_cfg, map, gps};
+
+    const auto returned = lidar.config();
+    EXPECT_NEAR(returned.z_min.numerical_value_in(cm), 15.0, 1e-6);
+    EXPECT_NEAR(returned.z_max.numerical_value_in(cm), 90.0, 1e-6);
+    EXPECT_NEAR(returned.d.numerical_value_in(cm), 3.0, 1e-6);
+    EXPECT_EQ(returned.fov_circles, 2u);
+}
+
+// ---- 4 fov_circles beam count ----
+
+TEST(MockLidar, FourCirclesHasCorrectBeamCount) {
+    // 1 + 4 + 16 + 64 = 85
+    Map3DImpl map{makeBoundsConfig()};
+    MockGPS gps{Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]}, Orientation{}};
+    MockLidar lidar{types::LidarConfigData{{}, 20.0*cm, 120.0*cm, 2.5*cm, 4}, map, gps};
+    const auto result = lidar.scan(Orientation{});
+    EXPECT_EQ(result.size(), 85u);  // 1 + 4 + 16 + 64
+}
+
+// ---- Returned hit angle matches scan orientation ----
+
+TEST(MockLidar, HitAngleMatchesScanOrientation) {
+    Map3DImpl map{makeBoundsConfig()};
+    MockGPS gps{Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}};
+    MockLidar lidar{makeLidar(1), map, gps};
+
+    const Orientation scan_dir{30.0*horizontal_angle[deg], 5.0*altitude_angle[deg]};
+    const auto result = lidar.scan(scan_dir);
+    ASSERT_FALSE(result.empty());
+    // Center beam's reported angle should match the requested scan orientation (relative angles)
+    EXPECT_NEAR(result[0].angle.horizontal.numerical_value_in(deg), 30.0, 1e-3);
+    EXPECT_NEAR(result[0].angle.altitude.numerical_value_in(deg), 5.0, 1e-3);
+}
+
+// ---- Closest of two obstacles in same direction is detected ----
+
+TEST(MockLidar, ClosestObstacleIsDetected) {
+    Map3DImpl map{makeBoundsConfig()};
+    // Near obstacle at 50 cm, far obstacle at 100 cm, same direction
+    map.set(Position3D{100.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+            types::VoxelOccupancy::Occupied);
+    map.set(Position3D{150.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+            types::VoxelOccupancy::Occupied);
+
+    MockGPS gps{Position3D{50.0 * x_extent[cm], 50.0 * y_extent[cm], 50.0 * z_extent[cm]},
+                Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}};
+    MockLidar lidar{makeLidar(1), map, gps};
+
+    const auto result = lidar.scan(Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]});
+    ASSERT_FALSE(result.empty());
+    // Should detect the nearer obstacle (~50 cm), not the far one (~100 cm)
+    const double d = result[0].distance.numerical_value_in(cm);
+    EXPECT_LT(d, 75.0) << "Should detect closest obstacle, not a further one";
+}

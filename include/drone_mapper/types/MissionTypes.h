@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,9 +15,9 @@ struct MissionConfigData {
     std::size_t max_steps = 0;
     PhysicalLength gps_resolution{};
     double output_mapping_resolution_factor = 1.0;
-    // Optional: constrain the exploration zone to a sub-region of the map.
-    // When absent the full map boundaries (from MapConfig) are used.
-    std::optional<MappingBounds> exploration_boundaries{};
+    // Mission exploration / output map boundaries.
+    // When not set via YAML, defaults to very large values (full map used).
+    MappingBounds mission_bounds{};
 };
 
 enum class MissionRunStatus {

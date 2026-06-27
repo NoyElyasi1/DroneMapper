@@ -98,20 +98,26 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
     const auto res_result = computeResolution(mission, simulation.map_resolution);
 
     // Output map uses same spatial extent as hidden map but possibly different resolution.
-    // If the mission specifies exploration_boundaries, clip the output map to that zone.
+    // Use mission_bounds to constrain the output map, clamped to the hidden map.
     types::MapConfig output_map_config = hidden_map_config;
     output_map_config.resolution = res_result.resolution;
-    if (mission.exploration_boundaries) {
-        const auto& eb = *mission.exploration_boundaries;
+    {
+        const auto& eb = mission.mission_bounds;
         const auto& hb = hidden_map_config.boundaries;
-        // Clamp to hidden map bounds so we never go outside the loaded NPY.
         auto clampX = [](auto v, auto lo, auto hi) { return v < lo ? lo : v > hi ? hi : v; };
-        output_map_config.boundaries.min_x      = clampX(eb.min_x,      hb.min_x,      hb.max_x);
-        output_map_config.boundaries.max_x      = clampX(eb.max_x,      hb.min_x,      hb.max_x);
-        output_map_config.boundaries.min_y      = clampX(eb.min_y,      hb.min_y,      hb.max_y);
-        output_map_config.boundaries.max_y      = clampX(eb.max_y,      hb.min_y,      hb.max_y);
-        output_map_config.boundaries.min_height = clampX(eb.min_height, hb.min_height, hb.max_height);
-        output_map_config.boundaries.max_height = clampX(eb.max_height, hb.min_height, hb.max_height);
+        // Only restrict if mission_bounds are non-trivial (non-zero span).
+        const bool has_bounds =
+            (eb.max_x.numerical_value_in(cm) - eb.min_x.numerical_value_in(cm)) > 0.0 ||
+            (eb.max_y.numerical_value_in(cm) - eb.min_y.numerical_value_in(cm)) > 0.0 ||
+            (eb.max_height.numerical_value_in(cm) - eb.min_height.numerical_value_in(cm)) > 0.0;
+        if (has_bounds) {
+            output_map_config.boundaries.min_x      = clampX(eb.min_x,      hb.min_x,      hb.max_x);
+            output_map_config.boundaries.max_x      = clampX(eb.max_x,      hb.min_x,      hb.max_x);
+            output_map_config.boundaries.min_y      = clampX(eb.min_y,      hb.min_y,      hb.max_y);
+            output_map_config.boundaries.max_y      = clampX(eb.max_y,      hb.min_y,      hb.max_y);
+            output_map_config.boundaries.min_height = clampX(eb.min_height, hb.min_height, hb.max_height);
+            output_map_config.boundaries.max_height = clampX(eb.max_height, hb.min_height, hb.max_height);
+        }
     }
     auto output_map = std::make_unique<Map3DImpl>(output_map_config);
 
@@ -123,11 +129,12 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
     // Components
     auto gps = std::make_unique<MockGPS>(
         simulation.initial_drone_position,
-        Orientation{simulation.initial_angle, 0.0 * altitude_angle[deg]});
+        Orientation{simulation.initial_angle, 0.0 * altitude_angle[deg]},
+        mission.gps_resolution);
 
     auto movement = std::make_unique<MockMovement>(*gps, *hidden_map, drone);
     auto lidar_impl = std::make_unique<MockLidar>(lidar, *hidden_map, *gps);
-    auto mapping_algo = std::make_unique<MappingAlgorithmImpl>(drone, *output_map);
+    auto mapping_algo = std::make_unique<MappingAlgorithmImpl>(mission, lidar, drone, *output_map);
     auto drone_ctrl = std::make_unique<DroneControlImpl>(
         drone, mission, *lidar_impl, *gps, *movement, *output_map, *mapping_algo);
     auto mission_ctrl = std::make_unique<MissionControlImpl>(mission, *drone_ctrl);

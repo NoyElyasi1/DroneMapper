@@ -25,7 +25,7 @@ public:
 class MockMappingAlgo : public IMappingAlgorithm {
 public:
     MockMappingAlgo(types::DroneConfigData d, const IMap3D& m)
-        : IMappingAlgorithm(d, m) {}
+        : IMappingAlgorithm({}, {}, d, m) {}
     MOCK_METHOD(types::MappingStepCommand, nextStep,
                 (const types::DroneState&, const types::LidarScanResult*), (override));
 };
@@ -65,7 +65,7 @@ std::unique_ptr<SimulationRunImpl> buildRun(
     if (mis_cfg.max_steps == 0) { mis_cfg.max_steps = 10; mis_cfg.gps_resolution = 10.0*cm; mis_cfg.output_mapping_resolution_factor=1.0; }
     auto hidden_map  = std::make_unique<Map3DImpl>(cfg);
     auto output_map  = std::make_unique<Map3DImpl>(cfg);
-    auto gps         = std::make_unique<MockGPS>(Position3D{}, Orientation{});
+    auto gps         = std::make_unique<MockGPS>(Position3D{}, Orientation{}, 10.0*cm);
     auto movement    = std::make_unique<MockMovement>(*gps, *hidden_map, drone);
     auto lidar       = std::make_unique<MockLidar>(lidar_cfg, *hidden_map, *gps);
     auto algo        = std::make_unique<MockMappingAlgo>(drone, *output_map);
@@ -206,4 +206,49 @@ TEST(SimulationRun, MockMovementAdvanceChangesGPS) {
 
     // After advancing east by 20 cm, x should have changed.
     EXPECT_NE(before_x, after_x);
+}
+
+// ---- MockGPS with custom resolution constructs without throw ----
+
+TEST(SimulationRun, MockGPSCustomResolutionConstructsOk) {
+    MockGPS gps{Position3D{}, Orientation{}, 15.0*cm};
+    EXPECT_NEAR(gps.position().x.numerical_value_in(cm), 0.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.numerical_value_in(cm), 0.0, 1e-6);
+}
+
+// ---- MockMovement rotate changes heading ----
+
+TEST(SimulationRun, MockMovementRotateChangesHeading) {
+    auto cfg = makeMapConfig();
+    auto drone = makeDroneConfig();
+    MockGPS gps{Position3D{50.0*x_extent[cm], 50.0*y_extent[cm], 50.0*z_extent[cm]},
+                Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}};
+    Map3DImpl hidden{cfg};
+    MockMovement movement{gps, hidden, drone};
+
+    const double before_h = gps.heading().horizontal.numerical_value_in(deg);
+    movement.rotate(types::RotationDirection::Left, 45.0*horizontal_angle[deg]);
+    const double after_h = gps.heading().horizontal.numerical_value_in(deg);
+    EXPECT_NE(before_h, after_h);
+}
+
+// ---- Score in result does not exceed 100 ----
+
+TEST(SimulationRun, ScoreNeverExceeds100) {
+    const std::filesystem::path out = std::filesystem::temp_directory_path() / "sr_test9.npy";
+    auto run = buildRun({types::MissionRunStatus::Completed, 5, {}}, out);
+    const auto result = run->run();
+    EXPECT_LE(result.mission_score, 100.0);
+    std::filesystem::remove(out);
+}
+
+// ---- Output map file is populated (non-zero size) ----
+
+TEST(SimulationRun, OutputMapFileIsNonEmpty) {
+    const std::filesystem::path out = std::filesystem::temp_directory_path() / "sr_test10.npy";
+    auto run = buildRun({types::MissionRunStatus::Completed, 2, {}}, out);
+    run->run();
+    EXPECT_TRUE(std::filesystem::exists(out));
+    EXPECT_GT(std::filesystem::file_size(out), 0u) << "Saved .npy should be non-empty";
+    std::filesystem::remove(out);
 }
