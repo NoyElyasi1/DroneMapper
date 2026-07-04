@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DroneMapper 2 — High Level Design Document</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #222;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  .header-banner {
+    background: #3b6fa0;
+    color: white;
+    text-align: center;
+    padding: 30px 20px 20px;
+    margin-bottom: 30px;
+    border-radius: 4px;
+  }
+  .header-banner h1 { margin: 0; font-size: 2.2em; font-style: italic; }
+  .header-banner h2 { margin: 5px 0; font-size: 1.2em; font-weight: normal; font-style: italic; }
+  .header-banner .authors { margin-top: 10px; font-size: 1em; }
+  h1 { color: #2c5282; border-bottom: 2px solid #2c5282; padding-bottom: 6px; }
+  h2 { color: #2c5282; border-bottom: 1px solid #cbd5e0; padding-bottom: 4px; margin-top: 30px; }
+  h3 { color: #2d3748; margin-top: 20px; }
+  h4 { color: #2d3748; margin-top: 15px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 0.93em; }
+  th { background: #edf2f7; }
+  code, pre { font-family: Consolas, 'Courier New', monospace; }
+  pre { background: #f7fafc; border: 1px solid #e2e8f0; padding: 10px; overflow-x: auto; font-size: 0.88em; }
+  code { background: #edf2f7; padding: 1px 4px; border-radius: 3px; font-size: 0.93em; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  .page-break { page-break-before: always; }
+  .footer { text-align: center; color: #888; font-size: 0.85em; margin-top: 40px; border-top: 1px solid #ddd; padding-top: 8px; }
+  .uml-diagram { text-align: center; margin: 15px 0; }
+  .uml-diagram img { max-width: 100%; }
+  .diagram-box {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    padding: 12px;
+    margin: 12px 0;
+    font-family: Consolas, monospace;
+    font-size: 0.85em;
+    white-space: pre;
+    overflow-x: auto;
+    line-height: 1.35;
+  }
+</style>
+</head>
+<body>
+
+<div class="header-banner">
+  <h1>DroneMapper 2</h1>
+  <h2>High Level Design Document</h2>
+  <div class="authors">Roni Hagai (324207257) &nbsp;|&nbsp; Noy Elyasi (315659201)</div>
+</div>
+
+<!-- ============================================================ -->
+<h1>1. Overview</h1>
+
+<p>DroneMapper is an autonomous 3D indoor-mapping simulation written in C++20. A virtual drone navigates a
+user-supplied voxel building model loaded from a <code>.npy</code> file, fires a cone-beam Lidar sensor at each position,
+and constructs an internal occupancy map written to disk when exploration finishes. A separate
+<code>maps_comparison</code> tool scores the drone's reconstructed map against the ground-truth using an F1-based metric.
+The system supports batch simulation runs driven by a single YAML composition file.</p>
+
+<!-- ============================================================ -->
+<h1>2. High-Level Architecture</h1>
+
+<p>The system is divided into six layers. Each layer communicates only with its immediate neighbours through
+well-defined interfaces, enabling independent testing of every component.</p>
+
+<table>
+<tr><th>Layer</th><th>Component</th><th>Responsibility</th></tr>
+<tr><td><b>Entry Points</b></td><td><code>drone_mapper_simulation_main.cpp</code><br><code>maps_comparison_main.cpp</code></td><td>Parse CLI args; delegate to SimulationManager or MapsComparison</td></tr>
+<tr><td><b>Orchestration</b></td><td><code>SimulationManager</code> / <code>ISimulation</code><br><code>SimulationRunFactory</code> / <code>ISimulationRunFactory</code></td><td>Combinatorial run scheduling; factory wires all dependencies for a single run</td></tr>
+<tr><td><b>Run Execution</b></td><td><code>SimulationRunImpl</code> / <code>ISimulationRun</code><br><code>MissionControlImpl</code> / <code>IMissionControl</code></td><td>Owns one simulation run; drives drone steps; manages termination &amp; output</td></tr>
+<tr><td><b>Drone Control</b></td><td><code>DroneControlImpl</code> / <code>IDroneControl</code><br><code>MappingAlgorithmImpl</code> / <code>IMappingAlgorithm</code></td><td>Executes per-step commands from the algorithm; DFS exploration logic</td></tr>
+<tr><td><b>Sensor Mocks</b></td><td><code>MockGPS</code> / <code>IGPS</code><br><code>MockMovement</code> / <code>IDroneMovement</code><br><code>MockLidar</code> / <code>ILidar</code></td><td>Simulate physical hardware against the hidden ground-truth map</td></tr>
+<tr><td><b>Data / Config</b></td><td><code>Map3DImpl</code> / <code>IMap3D</code> / <code>IMutableMap3D</code><br><code>ConfigParser</code> · <code>ErrorLogger</code> · <code>MapsComparison</code> · <code>ScanResultToVoxels</code></td><td>3D occupancy grid (.npy), YAML parsing, error logging, scoring, scan projection</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h1>3. UML Class Diagram</h1>
+
+<div class="diagram-box">
+  «interface»                   «interface»
+  ┌──────────────────┐          ┌──────────────────────────┐
+  │   ISimulation    │          │   ISimulationRunFactory  │
+  │──────────────────│          │──────────────────────────│
+  │ + run()          │          │ + create(...)            │
+  └────────┬─────────┘          └──────────────┬───────────┘
+           │ implements                         │ implements
+           ▼                                    ▼
+  ┌──────────────────────┐      ┌──────────────────────────┐
+  │  SimulationManager   │──────│  SimulationRunFactory    │
+  │──────────────────────│uses  │──────────────────────────│
+  │ + run(composition,   │      │ + create(sim, mission,   │
+  │       output_path)   │      │   drone, lidar, path)    │
+  └──────────────────────┘      └──────────────┬───────────┘
+                                               │ creates
+                                               ▼
+                              «interface»  ┌──────────────────────┐
+                              ISimulationRun│  SimulationRunImpl   │
+                              ─────────────│──────────────────────│
+                              + run()      │ - hidden_map_        │
+                                           │ - output_map_        │
+                                           │ - mission_control_   │
+                                           └──────────┬───────────┘
+                                                      │ delegates to
+                                                      ▼
+                          «interface»        ┌──────────────────────┐
+                          IMissionControl    │  MissionControlImpl  │
+                          ──────────────────│──────────────────────│
+                          + runMission()    │ - drone_control_     │
+                                            │ + runMission()       │
+                                            └──────────┬───────────┘
+                                                       │ steps
+                                                       ▼
+  ┌──────────────┐  «interface»             ┌──────────────────────┐
+  │    IGPS      │  IDroneControl           │  DroneControlImpl    │
+  │──────────────│  ─────────────          │──────────────────────│
+  │ + position() │  + step()               │ - lidar_             │
+  │ + heading()  │  + state()              │ - gps_               │
+  └──────┬───────┘         ▲ implements    │ - movement_          │
+         │ implements      │               │ - mapping_algorithm_ │
+         ▼                 │               └──────────┬───────────┘
+  ┌──────────────┐   ┌─────┴──────────┐              │ requests from
+  │   MockGPS    │   │DroneControlImpl │              ▼
+  └──────────────┘   └─────────────────┘   «interface»
+                                            IMappingAlgorithm
+  ┌──────────────────┐                     ──────────────────────
+  │  IDroneMovement  │                     + nextStep(state, scan)
+  │──────────────────│                              ▲ implements
+  │ + rotate()       │ implements                   │
+  │ + advance()      │◄──── MockMovement    ┌───────┴──────────────┐
+  │ + elevate()      │                      │ MappingAlgorithmImpl │
+  └──────────────────┘                      │──────────────────────│
+                                            │ - visited_           │
+  ┌──────────────────┐                      │ - backtrackStack_    │
+  │     ILidar       │ implements           │ + nextStep()         │
+  │──────────────────│◄──── MockLidar       └──────────────────────┘
+  │ + scan()         │
+  └──────────────────┘
+                                  «interface»         «interface»
+  ┌────────────────────┐          ┌──────────────┐   ┌─────────────────┐
+  │    Map3DImpl       │implements│   IMap3D     │   │  IMutableMap3D  │
+  │────────────────────│─────────►│──────────────│   │─────────────────│
+  │ - npy_array_       │          │ + atVoxel()  │   │ + set()         │
+  │ - config_          │          │ + getConfig()│   │ + save()        │
+  │ + atVoxel()        │          └──────────────┘   └─────────────────┘
+  │ + set() / save()   │
+  └────────────────────┘
+
+  ┌──────────────────┐   ┌────────────────────┐   ┌──────────────────────┐
+  │  ConfigParser    │   │    ErrorLogger     │   │   MapsComparison     │
+  │──────────────────│   │────────────────────│   │──────────────────────│
+  │ + parseDroneConfig│  │ + log(code, msg)   │   │ + compare(orig,      │
+  │ + parseLidarConfig│  └────────────────────┘   │          targets)    │
+  │ + parseMission   │                             └──────────────────────┘
+  │ + parseSimulation│   ┌────────────────────┐
+  │ + parseComposition   │ ScanResultToVoxels │
+  │ + parseComparison│   │────────────────────│
+  └──────────────────┘   │ + project(scan,    │
+                         │   pos, map)        │
+                         └────────────────────┘
+</div>
+
+<p><b>Key relationships:</b></p>
+<ul>
+  <li><b>DroneControlImpl → Interfaces:</b> depends on <code>IGPS</code>, <code>IDroneMovement</code>, <code>ILidar</code>, <code>IMappingAlgorithm</code>, <code>IMutableMap3D</code> — never on concrete implementations (Dependency Inversion Principle).</li>
+  <li><b>MappingAlgorithmImpl → IMap3D:</b> the algorithm reads the output map (read-only) to guide DFS; it never writes.</li>
+  <li><b>SimulationRunFactory:</b> the composition root — creates all objects and injects dependencies for a single run.</li>
+  <li><b>Map3DImpl:</b> implements both <code>IMap3D</code> (read) and <code>IMutableMap3D</code> (write); factory passes the same instance under the appropriate interface to each consumer.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h1>4. UML Sequence Diagram — Main Flow</h1>
+
+<div class="diagram-box">
+  main      SimulationManager  SimulationRunFactory  SimulationRunImpl  MissionControlImpl  DroneControlImpl   MappingAlgorithmImpl
+   │               │                    │                   │                   │                  │                    │
+   │ run(yaml)     │                    │                   │                   │                  │                    │
+   │──────────────►│                    │                   │                   │                  │                    │
+   │               │ [for each combo]   │                   │                   │                  │                    │
+   │               │ create(cfg...)     │                   │                   │                  │                    │
+   │               │───────────────────►│                   │                   │                  │                    │
+   │               │                   │ new SimulationRunImpl                 │                  │                    │
+   │               │                   │ (wires GPS, Movement, Lidar,          │                  │                    │
+   │               │                   │  MissionControl, DroneControl, ...)   │                  │                    │
+   │               │                   │──────────────────►│                   │                  │                    │
+   │               │◄──────── ISimulationRun ptr ─────────│                   │                  │                    │
+   │               │ run_obj->run()     │                   │                   │                  │                    │
+   │               │──────────────────────────────────────►│                   │                  │                    │
+   │               │                   │                   │ runMission()      │                  │                    │
+   │               │                   │                   │──────────────────►│                  │                    │
+   │               │                   │                   │                   │ [loop until done/maxSteps]            │
+   │               │                   │                   │                   │ step()           │                    │
+   │               │                   │                   │                   │─────────────────►│                    │
+   │               │                   │                   │                   │                  │ nextStep(state,    │
+   │               │                   │                   │                   │                  │         scan)      │
+   │               │                   │                   │                   │                  │───────────────────►│
+   │               │                   │                   │                   │                  │◄── MappingStepCmd ─│
+   │               │                   │                   │                   │                  │                    │
+   │               │                   │                   │                   │                  │ [if SCAN requested]│
+   │               │                   │                   │                   │                  │ lidar_.scan()      │
+   │               │                   │                   │                   │                  │──► MockLidar       │
+   │               │                   │                   │                   │                  │◄── LidarScanResult │
+   │               │                   │                   │                   │                  │                    │
+   │               │                   │                   │                   │                  │ ScanResultToVoxels │
+   │               │                   │                   │                   │                  │ output_map_.set()  │
+   │               │                   │                   │                   │                  │                    │
+   │               │                   │                   │                   │                  │ [MOVE/ELEVATE/ROTATE]
+   │               │                   │                   │                   │                  │ movement_.advance()│
+   │               │                   │                   │                   │                  │──► MockMovement    │
+   │               │                   │                   │                   │                  │                    │
+   │               │                   │                   │◄── MissionRunResult ─────────────────│                   │
+   │               │                   │                   │ output_map_.save()│                  │                    │
+   │               │                   │                   │ MapsComparison::compare()            │                    │
+   │               │◄── SimulationResult ─────────────────│                   │                  │                    │
+   │               │                   │                   │                   │                  │                    │
+   │ writeReport() │                   │                   │                   │                  │                    │
+   │◄──────────────│                   │                   │                   │                  │                    │
+   │ (simulation_output.yaml)          │                   │                   │                  │                    │
+</div>
+
+<!-- ============================================================ -->
+<h1>5. Component Descriptions</h1>
+
+<h2>5.1 Entry Points</h2>
+
+<h3>drone_mapper_simulation_main.cpp</h3>
+<p>Accepts a single CLI argument: path to a YAML composition file. Parses it via <code>ConfigParser::parseCompositionConfig()</code>,
+constructs <code>SimulationManager</code> with a <code>SimulationRunFactory</code>, calls <code>run()</code>, and writes
+<code>simulation_output.yaml</code> summarising all run scores.</p>
+
+<h3>maps_comparison_main.cpp</h3>
+<p>Accepts two or more <code>.npy</code> file paths (ground-truth first, then one or more drone maps). Loads each as a
+<code>Map3DImpl</code>, calls <code>MapsComparison::compare()</code>, and prints one integer score (0–100) per target map.</p>
+
+<h2>5.2 SimulationManager — Combinatorial Orchestrator</h2>
+<p>Implements <code>ISimulation</code>. Receives a <code>SimulationCompositionData</code> containing lists of simulation configs,
+mission configs, drone configs, and lidar configs. Iterates over the Cartesian product (sim × mission × drone × lidar),
+asking the injected <code>ISimulationRunFactory</code> to create an <code>ISimulationRun</code> for each combination, calls
+<code>run()</code> on it, and accumulates results into a <code>SimulationManagerReport</code>. Factory exceptions are caught
+and recorded as error runs without aborting the remaining combinations.</p>
+
+<h2>5.3 SimulationRunFactory — Composition Root</h2>
+<p>Implements <code>ISimulationRunFactory</code>. For each combination it:</p>
+<ul>
+  <li>Parses all four YAML config files via <code>ConfigParser</code>.</li>
+  <li>Loads the ground-truth <code>.npy</code> map into a <code>Map3DImpl</code> (hidden map, read-only).</li>
+  <li>Creates an empty output <code>Map3DImpl</code> (mutable, same resolution/offset).</li>
+  <li>Constructs <code>MockGPS</code>, <code>MockMovement</code>, <code>MockLidar</code> — each referencing the hidden map.</li>
+  <li>Constructs <code>MappingAlgorithmImpl</code> (receives drone config + read-only output map ref).</li>
+  <li>Constructs <code>DroneControlImpl</code> (receives all sensor interfaces + algorithm + mutable map).</li>
+  <li>Constructs <code>MissionControlImpl</code> (receives drone control + mission config).</li>
+  <li>Returns a fully-wired <code>SimulationRunImpl</code>.</li>
+</ul>
+
+<h2>5.4 SimulationRunImpl — Single-Run Driver</h2>
+<p>Implements <code>ISimulationRun</code>. Its <code>run()</code> method:</p>
+<ul>
+  <li>Calls <code>MissionControlImpl::runMission()</code> and receives a <code>MissionRunResult</code>.</li>
+  <li>Saves the output map to a timestamped <code>.npy</code> file under <code>output_results/</code>.</li>
+  <li>Computes the mapping score via <code>MapsComparison::compare(hidden_map, output_map)</code>.</li>
+  <li>Returns a <code>SimulationResult</code> containing all config data, status, file path, and score.</li>
+</ul>
+
+<h2>5.5 MissionControlImpl — Step Loop</h2>
+<p>Implements <code>IMissionControl</code>. Calls <code>IDroneControl::step()</code> in a loop until the drone reports
+<code>Completed</code> or <code>FinishedWithUnmappable</code>, or until <code>max_steps</code> is reached. Collects any
+error references and returns a <code>MissionRunResult</code> with final status and step count.</p>
+
+<h2>5.6 DroneControlImpl — Per-Step Executor</h2>
+<p>Implements <code>IDroneControl</code>. On each <code>step()</code> call:</p>
+<ol>
+  <li>Reads current pose from <code>IGPS</code>.</li>
+  <li>Passes pose + last scan result to <code>IMappingAlgorithm::nextStep()</code>.</li>
+  <li>Executes the returned <code>MappingStepCommand</code>: scan via <code>ILidar</code>, project hits into <code>IMutableMap3D</code>
+      via <code>ScanResultToVoxels</code>, or move via <code>IDroneMovement</code>.</li>
+  <li>Returns <code>DroneStepResult</code> (Continue / Completed / Error).</li>
+</ol>
+
+<h2>5.7 MappingAlgorithmImpl — DFS Exploration</h2>
+<p>Implements <code>IMappingAlgorithm</code>. Runs a deterministic depth-first search over the 3D voxel grid.
+Reads the output map through the read-only <code>IMap3D</code> interface to check occupancy of candidate cells.</p>
+
+<h3>State</h3>
+<ul>
+  <li><code>visited_</code> — <code>std::unordered_set&lt;GridPoint&gt;</code>: prevents revisiting cells.</li>
+  <li><code>backtrackStack_</code> — <code>std::stack&lt;GridPoint&gt;</code>: DFS return path.</li>
+  <li><code>phase_</code> — navigation phase state machine (FindNext / Elevating / Rotating / Advancing / Done).</li>
+</ul>
+
+<h3>nextStep() — algorithm tick</h3>
+<ul>
+  <li><b>Scan phase:</b> If scan result is available, call <code>ScanResultToVoxels</code> to project hits into the output map.</li>
+  <li><b>FindNext:</b> Select an unvisited, unoccupied, in-bounds neighbour (+X,−X,+Y,−Y,+Z,−Z); push current cell; transition to Elevating.</li>
+  <li><b>Elevating / Rotating / Advancing:</b> Emit movement commands one sub-step at a time, checking for collision responses.</li>
+  <li><b>Backtrack:</b> If no frontier, pop the stack. Return <code>Finished</code> when the stack is empty.</li>
+</ul>
+
+<h2>5.8 Abstract Interfaces</h2>
+<p><code>DroneControlImpl</code> depends on five pure abstract classes, enabling full dependency inversion (DIP):</p>
+<ul>
+  <li><code>IGPS</code> — <code>position()</code> → <code>Position3D</code>, <code>heading()</code> → <code>Orientation</code>.</li>
+  <li><code>IDroneMovement</code> — <code>rotate(direction, angle)</code>, <code>advance(distance)</code>, <code>elevate(distance)</code> → <code>MovementResult</code>.</li>
+  <li><code>ILidar</code> — <code>scan(orientation)</code> → <code>LidarScanResult</code>; <code>config()</code> → <code>LidarConfigData</code>.</li>
+  <li><code>IMappingAlgorithm</code> — <code>nextStep(state, scan*)</code> → <code>MappingStepCommand</code>.</li>
+  <li><code>IMap3D</code> — <code>atVoxel(pos)</code>, <code>getMapConfig()</code>, <code>isInBounds(pos)</code>.</li>
+  <li><code>IMutableMap3D</code> (extends <code>IMap3D</code>) — <code>set(pos, occupancy)</code>, <code>save(path)</code>.</li>
+</ul>
+
+<h2>5.9 Mock Implementations</h2>
+
+<h3>MockGPS</h3>
+<p>Stores the drone's exact world-space position (<code>Position3D</code>) and heading (<code>Orientation</code>). Both
+<code>MockMovement</code> and <code>MockLidar</code> hold a reference to the same <code>MockGPS</code> instance — the
+movement mock writes to it, the lidar mock reads from it.</p>
+
+<h3>MockMovement</h3>
+<p>Applies rotate/advance/elevate commands to the <code>MockGPS</code> state. Before every translational move it
+ray-marches the drone's bounding box through the hidden ground-truth map and rejects the move (returning
+<code>MovementResult::Blocked</code>) if any sample is Occupied or outside mission bounds.</p>
+
+<h3>MockLidar</h3>
+<p>Computes all beam directions for the configured FOVC cone (circle <em>k</em> has 4<sup><em>k</em></sup> beams,
+half-angle = atan(<em>k</em>·<em>d</em> / <em>z_min</em>)). Each beam is ray-marched through the hidden map. Returns:</p>
+<ul>
+  <li><code>0 * cm</code> — hit closer than <code>z_min</code>.</li>
+  <li><code>t * cm</code> — distance to first occupied voxel (<code>z_min ≤ t ≤ z_max</code>).</li>
+  <li><code>z_max * cm</code> — no obstacle within range.</li>
+</ul>
+
+<h2>5.10 Map3DImpl — 3D Occupancy Grid</h2>
+<p>Backed by a <code>TinyNPY</code> array (flat <code>int8_t</code> in row-major X×Y×Z order). Implements both
+<code>IMap3D</code> (read-only) and <code>IMutableMap3D</code> (write + persist).</p>
+
+<p>Voxel occupancy values follow the <code>VoxelOccupancy</code> enum:</p>
+<table>
+<tr><th>Value</th><th>Name</th><th>Meaning</th></tr>
+<tr><td>-3</td><td>PotentiallyOccupied</td><td>Seen on beam path but not confirmed solid</td></tr>
+<tr><td>-2</td><td>OutOfBounds</td><td>Queried position is outside map boundaries</td></tr>
+<tr><td>-1</td><td>Unmapped</td><td>Not yet scanned by the drone (initial state)</td></tr>
+<tr><td>0</td><td>Empty</td><td>Scanned, confirmed open</td></tr>
+<tr><td>1</td><td>Occupied</td><td>Scanned, confirmed solid (wall/obstacle)</td></tr>
+</table>
+
+<p>A <code>MapConfig</code> carries the voxel resolution (in cm), world-space offset, and axis sizes. Resolution
+negotiation: the factory picks the smaller of the mission-requested resolution and the map's native resolution;
+if the request is smaller than the native resolution it is silently ignored (<code>ResolutionRequestStatus::Ignored</code>).</p>
+
+<h2>5.11 ConfigParser — YAML Configuration</h2>
+<p>All configuration files use YAML. Free functions parse each file type into a typed struct:</p>
+<ul>
+  <li><code>parseDroneConfig()</code> → <code>DroneConfigData</code> — physical dimensions, max move distances.</li>
+  <li><code>parseLidarConfig()</code> → <code>LidarConfigData</code> — <code>z_min</code>, <code>z_max</code>, step size <code>d</code>, FOVC circles.</li>
+  <li><code>parseMissionConfig()</code> → <code>MissionConfigData</code> — max steps, GPS resolution, output resolution factor, optional bounds.</li>
+  <li><code>parseSimulationConfig()</code> → <code>SimulationConfigData</code> — map file, resolution, offset, initial drone pose.</li>
+  <li><code>parseCompositionConfig()</code> → <code>SimulationCompositionData</code> — all of the above via file path lists.</li>
+  <li><code>parseComparisonConfig()</code> → <code>ComparisonConfigData</code> — used by <code>maps_comparison</code> tool.</li>
+</ul>
+<p>Errors are appended to a <code>std::string&amp;</code> output parameter and never throw; callers decide whether to
+abort or continue with defaults.</p>
+
+<h2>5.12 ErrorLogger</h2>
+<p>Writes structured error entries (code + message) to a log file on disk. Created by <code>SimulationRunFactory</code>
+when config parsing produces non-fatal errors; the log path is included in the output YAML report.</p>
+
+<h2>5.13 MapsComparison — Scoring</h2>
+<p>Computes an F1-based accuracy score (0–100) between a ground-truth map and one or more drone output maps.
+For occupied voxels it computes recall (true positives / ground-truth positives) and precision
+(true positives / drone positives), then combines them as F1 = 2·recall·precision/(recall+precision).
+This penalises both missed obstacles (low recall) and false-positive obstacles (low precision).</p>
+
+<h2>5.14 ScanResultToVoxels</h2>
+<p>Converts a <code>LidarScanResult</code> (a set of beam hits and misses expressed as world-space distances) into
+voxel writes on the <code>IMutableMap3D</code> output map. For each beam: marches along the beam direction marking
+cells <code>Empty</code> until the reported distance; marks the hit cell <code>Occupied</code>. Occupied cells
+are never overwritten with Empty.</p>
+
+<h2>5.15 Types — Strong-Typed Units (mp-units)</h2>
+<p>All physical quantities use the <b>mp-units</b> library (v2.5.0, via vcpkg) to enforce unit safety at
+compile time with zero runtime overhead.</p>
+<pre>using PhysicalLength  = mp_units::quantity&lt;drone_mapper::cm, double&gt;;
+using HorizontalAngle = mp_units::quantity&lt;mp_units::angular::degree, double&gt;;</pre>
+<ul>
+  <li><b>Construction:</b> <code>5.0 * cm</code> → <code>PhysicalLength</code>, &nbsp; <code>90.0 * deg</code> → <code>HorizontalAngle</code></li>
+  <li><b>Extraction:</b> <code>qty.numerical_value_in(cm)</code> / <code>qty.numerical_value_in(deg)</code> → <code>double</code></li>
+</ul>
+<p>Custom quantity specs <code>x_extent</code>, <code>y_extent</code>, <code>z_extent</code> are defined as subspecifications of
+<code>isq::length</code> to keep axis-labelled quantities type-safe.</p>
+
+<!-- ============================================================ -->
+<h1>6. File I/O Summary</h1>
+
+<table>
+<tr><th>Direction</th><th>File / Pattern</th><th>Format</th><th>Description</th></tr>
+<tr><td>Input</td><td><code>sim_compose.yaml</code></td><td>YAML</td><td>Lists all config files for a batch run (nested simulation_mission_groups)</td></tr>
+<tr><td>Input</td><td><code>simulation/*.yaml</code></td><td>YAML</td><td>Map path, resolution, drone start pose (map-local), <code>map_axes_offset</code> (shifts npy origin to world coords)</td></tr>
+<tr><td>Input</td><td><code>missions/mission*.yaml</code></td><td>YAML</td><td>max_steps, GPS resolution, output factor, optional bounds</td></tr>
+<tr><td>Input</td><td><code>drone_configs/drone_*.yaml</code></td><td>YAML</td><td>Physical drone dimensions, max movement</td></tr>
+<tr><td>Input</td><td><code>lidar_configs/lidar_*.yaml</code></td><td>YAML</td><td>z_min, z_max, step size d, FOVC circles</td></tr>
+<tr><td>Input</td><td><code>*.npy</code></td><td>NumPy float32 3D array</td><td>Ground-truth voxel occupancy grid</td></tr>
+<tr><td>Output</td><td><code>output_results/&lt;map&gt;_ms&lt;N&gt;_d&lt;R&gt;_fovc&lt;F&gt;/output_map.npy</code></td><td>NumPy int8</td><td>Drone's reconstructed occupancy map</td></tr>
+<tr><td>Output</td><td><code>simulation_output.yaml</code></td><td>YAML</td><td>Summary report: scores, statuses, file paths for all runs</td></tr>
+<tr><td>Output</td><td><code>output_results/errors_&lt;run&gt;.log</code></td><td>Plain text</td><td>Created only when recoverable parse errors occurred</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h1>7. Design Considerations and Alternatives</h1>
+
+<h2>7.1 Dependency Inversion Throughout</h2>
+<p><code>DroneControlImpl</code> depends only on five abstract interfaces; <code>MissionControlImpl</code> depends only on
+<code>IDroneControl</code>; <code>MappingAlgorithmImpl</code> depends only on <code>IMap3D</code>. All concrete objects
+(mocks, map, algorithm) are created in <code>SimulationRunFactory</code> and injected. This makes every layer
+independently testable and decouples algorithm logic from simulation infrastructure.</p>
+<p><b>Alternative considered:</b> direct instantiation inside <code>SimulationRunImpl</code>. Rejected because it
+prevents unit-testing individual layers and couples algorithm logic to mock implementations.</p>
+
+<h2>7.2 Factory Pattern for Combinatorial Runs</h2>
+<p><code>SimulationRunFactory</code> encapsulates all object construction and wiring for a single run. The
+<code>SimulationManager</code> only iterates the combination space and delegates creation. This cleanly separates
+"what to run" from "how to build it".</p>
+<p><b>Alternative considered:</b> building everything inline in <code>SimulationManager</code>. Rejected because it
+makes <code>SimulationManager</code> impossible to test without real files and real objects.</p>
+
+<h2>7.3 NPY as Map Format</h2>
+<p>Ground-truth and output maps are stored as NumPy <code>.npy</code> float32 arrays (via TinyNPY). This format is
+compact, binary, trivially readable from Python for analysis, and avoids parsing overhead at load time.</p>
+<p><b>Alternative considered:</b> CSV text files (as in Assignment 1). Rejected because they are slower to parse,
+larger on disk, and require custom readers in analysis scripts.</p>
+
+<h2>7.4 Deterministic DFS vs. Other Exploration Strategies</h2>
+<p>Fixed neighbour-search order (+X,−X,+Y,−Y,+Z,−Z) makes exploration fully deterministic and reproducible.</p>
+<p><b>Alternatives considered:</b></p>
+<ul>
+  <li><b>BFS:</b> Layer-by-layer coverage, but higher memory (frontier queue) and longer backtrack paths.</li>
+  <li><b>Frontier-based exploration:</b> Prioritises boundary cells; more efficient for sparse maps but significantly more complex and harder to guarantee determinism.</li>
+  <li><b>Random walk:</b> Simple but non-deterministic with no coverage guarantee.</li>
+</ul>
+
+<h2>7.5 F1 Scoring vs. Recall-Only</h2>
+<p>The scoring metric uses F1 = 2·recall·precision/(recall+precision) for occupied cells. Pure recall rewarded
+mapping every voxel as occupied (trivially 100%); F1 penalises false positives equally to missed voxels.</p>
+<p><b>Alternative considered:</b> recall only. Rejected because it does not penalise false-positive obstacle
+detections, allowing trivial cheating by marking everything occupied.</p>
+
+<h2>7.6 Strong Types with mp-units</h2>
+<p>All physical quantities use <b>mp-units</b> for compile-time unit safety — prevents unit-mismatch bugs with
+zero runtime overhead. Axis-specific quantity specs (<code>x_extent</code>, <code>y_extent</code>, <code>z_extent</code>)
+further prevent accidental axis confusion at compile time.</p>
+<p><b>Alternative considered:</b> raw <code>double</code> with naming conventions. Rejected because the compiler
+cannot enforce unit correctness and unit bugs are historically hard to find (e.g. Mars Climate Orbiter).</p>
+
+<h2>7.7 YAML Configuration vs. Key=Value Text</h2>
+<p>All configuration files use YAML (parsed via yaml-cpp). YAML supports nested structures, lists, and comments
+natively, matching the hierarchical nature of simulation composition data.</p>
+<p><b>Alternative considered:</b> flat key=value text (as in Assignment 1). Rejected because lists of config file
+paths cannot be expressed cleanly without special syntax, and YAML is better supported by tooling.</p>
+
+<!-- ============================================================ -->
+<h1>8. Testing Approach</h1>
+
+<h2>8.1 Framework &amp; Build</h2>
+<p>The project uses <b>Google Test (GTest) v1.17.0</b>, installed via <b>vcpkg</b> (along with mp-units, yaml-cpp, and TinyNPY).
+All tests are compiled into a single binary <code>drone_mapper_simulation_test</code> and registered with CTest.
+<b>GCC 12</b> (<code>g++-12</code>) is required; GCC 11 cannot compile the project due to a known compiler bug with deduction guides
+inside class templates triggered by the mp-units + fmt v12 combination.</p>
+
+<h2>8.2 Test Organisation</h2>
+<p>The test suite is organised into eight suites across three directories:</p>
+
+<table>
+<tr><th>Suite</th><th>Source File</th><th>Tests</th><th>Focus</th></tr>
+<tr><td><code>SimulationManager</code></td><td><code>components/test_simulation_manager.cpp</code></td><td>9</td>
+    <td>Null factory rejection, report structure, combinatorial run count, all drone/lidar combos run, factory exception handling, metric field</td></tr>
+<tr><td><code>SimulationRun</code></td><td><code>components/test_simulation_run.cpp</code></td><td>14</td>
+    <td>Delegates to mission control, saves output map, result contains file path, config data propagated, score range, error missions, MockGPS position/heading/resolution, rotate changes heading, score ≤100, file non-empty</td></tr>
+<tr><td><code>MissionControl</code></td><td><code>components/test_mission_control.cpp</code></td><td>9</td>
+    <td>Completes on Done, multi-step runs, max_steps enforcement, zero max_steps, exact step count, error propagation</td></tr>
+<tr><td><code>DroneControl</code></td><td><code>components/test_drone_control.cpp</code></td><td>14</td>
+    <td>State reflects GPS, step index, Completed/Continue results, scan called when requested, movement commands dispatched (advance/rotate/elevate), scan result passed to next step, null scan on first call, GPS state after move</td></tr>
+<tr><td><code>MappingAlgorithm</code></td><td><code>components/test_mapping_algorithm.cpp</code></td><td>14</td>
+    <td>First call returns Working, returns Finished on empty map, occupied voxel not navigated into, no crash on full map, valid enum values, reads map state, movement limits respected (advance/elevate/rotate), always requests scan</td></tr>
+<tr><td><code>MockLidar</code></td><td><code>components/test_mock_lidar.cpp</code></td><td>17</td>
+    <td>Empty map returns max-distance, wall detection, distance bounded by z_max, FOVC beam counts (0/1/2/3/4 circles), directional accuracy, z_min behaviour, exact distance, obstacle at z_max boundary, config() returns configured data, hit angle matches scan orientation, closest obstacle detected first</td></tr>
+<tr><td><code>MapsComparison</code></td><td><code>components/test_maps_comparison.cpp</code></td><td>12</td>
+    <td>Identical empty maps, empty drone vs occupied GT, perfect mapping, identical full maps = 100, missed occupied, score range 0–100, multiple targets, false positives reduce score, copied map scores 100, partial mapping, empty vs empty GT</td></tr>
+<tr><td><code>Integration</code></td><td><code>integration/test_integration_real_algorithm.cpp</code><br><code>integration/test_integration_mock_algorithm.cpp</code></td><td>25</td>
+    <td>Real algorithm no crash, mission terminates, score in range, end-to-end SimulationRunImpl, benchmark map loads/runs/scores, new scenario maps (small/big/house), sim_compose parses correctly, drone starts inside map bounds, scan populates output map, lidar hits marked Occupied, mission step count in bounds</td></tr>
+</table>
+
+<p><b>Total: 114 automated tests, all passing.</b></p>
+
+<h2>8.3 Testing Strategy</h2>
+<ul>
+  <li><b>Unit tests (components/):</b> Each component is tested in isolation with mock dependencies injected via constructor. Components are tested against controlled synthetic maps and deterministic mock behaviours.</li>
+  <li><b>Integration tests (integration/):</b> Wire the full chain (SimulationRunImpl + all mocks + real algorithm + Map3DImpl) over small synthetic maps, verifying end-to-end exploration behaviour, termination, and scoring.</li>
+  <li><b>Dependency injection enables isolation:</b> Because every layer depends only on abstract interfaces, each component can be tested independently without instantiating the full object graph.</li>
+  <li><b>Shared test helpers:</b> Factory functions (<code>makeLidarConfig()</code>, <code>makeSimpleMap()</code>) and mock implementations (mock algorithm, mock GPS) reduce boilerplate across suites.</li>
+</ul>
+
+<h2>8.4 How to Run</h2>
+<pre>export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset default
+cmake --build build
+./build/drone_mapper_simulation_test          # 75 tests
+./build/drone_mapper_simulation sample_config/simulation_compositions.yaml
+./build/maps_comparison data_maps/office_small.npy data_maps/office_small.npy</pre>
+<pre>mkdir build &amp;&amp; cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+ctest --output-on-failure</pre>
+
+<!-- ============================================================ -->
+<h1>9. Glossary</h1>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><b>FOVC</b></td><td>Field Of View Circles — number of beam rings in the Lidar cone (including the centre beam).</td></tr>
+<tr><td><b>Grid / Voxel</b></td><td>A 3D integer-index cell produced by dividing continuous world coordinates by the map resolution.</td></tr>
+<tr><td><b>Ground Truth / Hidden Map</b></td><td>The reference building map loaded from a <code>.npy</code> file; never directly accessible to the algorithm.</td></tr>
+<tr><td><b>z_min / z_max</b></td><td>Minimum / maximum measurable Lidar range (cm).</td></tr>
+<tr><td><b>d</b></td><td>Lidar step size — angular spacing between beam rings (cm at z_min).</td></tr>
+<tr><td><b>Composition</b></td><td>A YAML file listing simulation, mission, drone, and lidar config files; the Cartesian product defines all runs.</td></tr>
+<tr><td><b>F1 Score</b></td><td>Harmonic mean of recall and precision; used to score occupied-voxel reconstruction accuracy.</td></tr>
+<tr><td><b>DIP</b></td><td>Dependency Inversion Principle — high-level modules depend on abstractions, not on concretions.</td></tr>
+</table>
+
+<div class="footer">
+  Roni Hagai 324207257 &nbsp;|&nbsp; Noy Elyasi 315659201 &nbsp;|&nbsp; Advanced Topics in Programming — Assignment 2
+</div>
+
+</body>
+</html>
