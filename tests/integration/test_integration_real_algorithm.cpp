@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <drone_mapper/ConfigParser.h>
 #include <drone_mapper/DroneControlImpl.h>
 #include <drone_mapper/Map3DImpl.h>
 #include <drone_mapper/MappingAlgorithmImpl.h>
@@ -13,6 +14,7 @@
 #include <drone_mapper/SimulationRunFactory.h>
 
 #include <TinyNPY.h>
+#include <yaml-cpp/yaml.h>
 
 #include <filesystem>
 
@@ -512,4 +514,190 @@ TEST(Integration, MissionStepCountWithinBounds) {
     const auto result = mc->runMission();
     EXPECT_GE(result.steps, 1u);
     EXPECT_LE(result.steps, max_steps);
+}
+
+// ============================================================
+// New-scenario integration tests using inputs/ config files
+// ============================================================
+
+namespace {
+
+// Helper: find the project-root inputs/ directory from wherever the test binary runs.
+std::filesystem::path inputsDir() {
+    const std::vector<std::filesystem::path> candidates = {
+        "inputs",
+        "../inputs",
+        "/mnt/c/Users/roni/DroneMapper/inputs",
+    };
+    for (const auto& p : candidates)
+        if (std::filesystem::is_directory(p)) return p;
+    return "inputs";
+}
+
+// Run a single simulation via SimulationRunFactory with a limit on max_steps.
+// Returns the score (or -1.0 on error).
+double runScenario(const std::string& sim_yaml,
+                   const std::string& mission_yaml,
+                   const std::string& drone_yaml,
+                   const std::string& lidar_yaml,
+                   std::size_t max_steps_override = 300)
+{
+    const auto base = inputsDir();
+    std::string err;
+    auto sim     = parseSimulationConfig(base / sim_yaml, err);
+    auto mission = parseMissionConfig   (base / mission_yaml, err);
+    auto drone   = parseDroneConfig    (base / drone_yaml, err);
+    auto lidar   = parseLidarConfig    (base / lidar_yaml, err);
+
+    // Limit steps so tests run fast
+    mission.max_steps = max_steps_override;
+
+    // Fix map path: if it doesn't exist relative to sim yaml dir, try base
+    if (!std::filesystem::exists(sim.map_filename)) {
+        const auto raw_map = YAML::LoadFile((base / sim_yaml).string())
+                                 ["simulation_config"]["map_filename"].as<std::string>("");
+        if (!raw_map.empty()) {
+            auto alt = base / raw_map;
+            if (std::filesystem::exists(alt)) sim.map_filename = alt;
+        }
+    }
+
+    SimulationRunFactory factory;
+    const auto out = std::filesystem::temp_directory_path() / "scenario_test_output.npy";
+    try {
+        auto run = factory.create(sim, mission, drone, lidar, std::filesystem::temp_directory_path());
+        const auto result = run->run();
+        std::filesystem::remove(out);
+        return result.mission_score;
+    } catch (const std::exception& e) {
+        ADD_FAILURE() << "Factory threw: " << e.what();
+        return -1.0;
+    }
+}
+
+} // anonymous namespace
+
+// ---- scenario_small map (20×20×20) with each mission variant ----
+
+TEST(Integration, SmallMap_OutMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/small_simulation_out.yaml",
+        "mission/small_mission_out.yaml",
+        "drone/drone_large.yaml",
+        "lidar/lidar_long.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+TEST(Integration, SmallMap_RoomMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/small_simulation_room.yaml",
+        "mission/small_mission_room.yaml",
+        "drone/drone_small.yaml",
+        "lidar/lidar_short.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+// ---- scenario_big map (30×30×30) ----
+
+TEST(Integration, BigMap_OutMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/large_simulation_out.yaml",
+        "mission/large_mission_out.yaml",
+        "drone/drone_large.yaml",
+        "lidar/lidar_long.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+TEST(Integration, BigMap_RoomMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/large_simulation_room.yaml",
+        "mission/large_mission_room.yaml",
+        "drone/drone_large.yaml",
+        "lidar/lidar_short.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+// ---- scenario_house map (29×30×31 with height_offset=150) ----
+
+TEST(Integration, HouseMap_LowerMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/house_simulation.yaml",
+        "mission/house_mission_lower.yaml",
+        "drone/drone_large.yaml",
+        "lidar/lidar_long.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+TEST(Integration, HouseMap_FullMission_RunsWithoutError) {
+    const double score = runScenario(
+        "simulation/house_simulation.yaml",
+        "mission/house_mission_full.yaml",
+        "drone/drone_small.yaml",
+        "lidar/lidar_short.yaml");
+    EXPECT_GE(score, 0.0);
+    EXPECT_LE(score, 100.0);
+}
+
+// ---- Config-parser integration: sim_compose.yaml parses all 5 simulations ----
+
+TEST(Integration, SimComposeParsesAllScenarios) {
+    const auto compose_path = inputsDir() / "sim_compose.yaml";
+    if (!std::filesystem::exists(compose_path)) {
+        GTEST_SKIP() << "inputs/sim_compose.yaml not found";
+    }
+    std::string err;
+    const auto comp = parseCompositionConfig(compose_path, err);
+    EXPECT_EQ(comp.simulation_mission_groups.size(), 5u)
+        << "Expected 5 simulation groups in sim_compose.yaml";
+    EXPECT_EQ(comp.drones.size(), 2u);
+    EXPECT_EQ(comp.lidars.size(), 2u);
+    // Total missions across all groups
+    std::size_t total_missions = 0;
+    for (const auto& [sim, missions] : comp.simulation_mission_groups)
+        total_missions += missions.size();
+    EXPECT_EQ(total_missions, 6u);
+}
+
+// ---- Initial drone position is inside map bounds (offset applied correctly) ----
+
+TEST(Integration, HouseMap_DroneStartsInsideMap) {
+    const auto base = inputsDir();
+    std::string err;
+    auto sim = parseSimulationConfig(base / "simulation/house_simulation.yaml", err);
+    // Fix map path if needed
+    if (!std::filesystem::exists(sim.map_filename)) {
+        const auto raw = YAML::LoadFile((base / "simulation/house_simulation.yaml").string())
+                             ["simulation_config"]["map_filename"].as<std::string>("");
+        auto alt = base / raw;
+        if (std::filesystem::exists(alt)) sim.map_filename = alt;
+    }
+    // Load the map and verify the (offset-adjusted) initial position is in bounds
+    auto npy = std::make_shared<NpyArray>();
+    ASSERT_EQ(npy->LoadNPY(sim.map_filename.string().c_str()), nullptr);
+    const auto& sh = npy->Shape();
+    const double res = sim.map_resolution.numerical_value_in(cm);
+    const double ox = sim.map_offset.x.numerical_value_in(cm);
+    const double oy = sim.map_offset.y.numerical_value_in(cm);
+    const double oz = sim.map_offset.z.numerical_value_in(cm);
+
+    // World-space start = initial_pos + offset
+    const double wx = sim.initial_drone_position.x.numerical_value_in(cm) + ox;
+    const double wy = sim.initial_drone_position.y.numerical_value_in(cm) + oy;
+    const double wz = sim.initial_drone_position.z.numerical_value_in(cm) + oz;
+
+    const double map_max_x = ox + (static_cast<int>(sh[0])-1)*res;
+    const double map_max_y = oy + (static_cast<int>(sh[1])-1)*res;
+    const double map_max_z = oz + (static_cast<int>(sh[2])-1)*res;
+
+    EXPECT_GE(wx, ox)        << "Drone x below map min_x";
+    EXPECT_LE(wx, map_max_x) << "Drone x above map max_x";
+    EXPECT_GE(wy, oy)        << "Drone y below map min_y";
+    EXPECT_LE(wy, map_max_y) << "Drone y above map max_y";
+    EXPECT_GE(wz, oz)        << "Drone z below map min_height (height_offset not applied?)";
+    EXPECT_LE(wz, map_max_z) << "Drone z above map max_height";
 }

@@ -131,6 +131,7 @@ void writeReport(const drone_mapper::types::SimulationManagerReport& report,
                     if (!mr.errors.empty()) {
                         out << YAML::Key << "error_ref" << YAML::Value << YAML::BeginMap
                             << YAML::Key << "code"    << YAML::Value << mr.errors[0].code
+                            << YAML::Key << "message" << YAML::Value << mr.errors[0].message
                             << YAML::EndMap;
                     }
                 }

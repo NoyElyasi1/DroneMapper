@@ -192,6 +192,18 @@ types::SimulationCompositionData parseCompositionConfig(const std::filesystem::p
         if (!sp.is_absolute()) sp = base / sp;
         types::SimulationConfigData sim_cfg = parseSimulationConfig(sp, err);
 
+        // Map filename in the simulation yaml may be relative to the composition base
+        // (e.g., "map/scenario.npy" from inputs/, not from inputs/simulation/).
+        // If the path produced by parseSimulationConfig doesn't exist, re-resolve from base.
+        if (!sim_cfg.map_filename.empty() && !std::filesystem::exists(sim_cfg.map_filename)) {
+            const YAML::Node sim_root = YAML::LoadFile(sp.string());
+            const auto raw_map = sim_root["simulation_config"]["map_filename"].as<std::string>("");
+            if (!raw_map.empty()) {
+                std::filesystem::path alt = base / raw_map;
+                if (std::filesystem::exists(alt)) sim_cfg.map_filename = alt;
+            }
+        }
+
         std::vector<types::MissionConfigData> missions_for_sim;
         for (const auto& mf : sim_entry["mission_configs"]) {
             std::filesystem::path mp{mf.as<std::string>()};

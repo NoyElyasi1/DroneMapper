@@ -99,11 +99,16 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
 
     // Output map uses same spatial extent as hidden map but possibly different resolution.
     // Use mission_bounds to constrain the output map, clamped to the hidden map.
+    // Mission bounds are in map-local coordinates (relative to map_offset), so add the offset
+    // to convert them to world coordinates before clamping.
     types::MapConfig output_map_config = hidden_map_config;
     output_map_config.resolution = res_result.resolution;
     {
         const auto& eb = mission.mission_bounds;
         const auto& hb = hidden_map_config.boundaries;
+        const double ox = simulation.map_offset.x.numerical_value_in(cm);
+        const double oy = simulation.map_offset.y.numerical_value_in(cm);
+        const double oz = simulation.map_offset.z.numerical_value_in(cm);
         auto clampX = [](auto v, auto lo, auto hi) { return v < lo ? lo : v > hi ? hi : v; };
         // Only restrict if mission_bounds are non-trivial (non-zero span).
         const bool has_bounds =
@@ -111,12 +116,19 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
             (eb.max_y.numerical_value_in(cm) - eb.min_y.numerical_value_in(cm)) > 0.0 ||
             (eb.max_height.numerical_value_in(cm) - eb.min_height.numerical_value_in(cm)) > 0.0;
         if (has_bounds) {
-            output_map_config.boundaries.min_x      = clampX(eb.min_x,      hb.min_x,      hb.max_x);
-            output_map_config.boundaries.max_x      = clampX(eb.max_x,      hb.min_x,      hb.max_x);
-            output_map_config.boundaries.min_y      = clampX(eb.min_y,      hb.min_y,      hb.max_y);
-            output_map_config.boundaries.max_y      = clampX(eb.max_y,      hb.min_y,      hb.max_y);
-            output_map_config.boundaries.min_height = clampX(eb.min_height, hb.min_height, hb.max_height);
-            output_map_config.boundaries.max_height = clampX(eb.max_height, hb.min_height, hb.max_height);
+            // Apply offset to convert mission-local bounds to world coordinates
+            const auto min_x_w      = (eb.min_x.numerical_value_in(cm)      + ox) * x_extent[cm];
+            const auto max_x_w      = (eb.max_x.numerical_value_in(cm)      + ox) * x_extent[cm];
+            const auto min_y_w      = (eb.min_y.numerical_value_in(cm)      + oy) * y_extent[cm];
+            const auto max_y_w      = (eb.max_y.numerical_value_in(cm)      + oy) * y_extent[cm];
+            const auto min_height_w = (eb.min_height.numerical_value_in(cm) + oz) * z_extent[cm];
+            const auto max_height_w = (eb.max_height.numerical_value_in(cm) + oz) * z_extent[cm];
+            output_map_config.boundaries.min_x      = clampX(min_x_w,      hb.min_x,      hb.max_x);
+            output_map_config.boundaries.max_x      = clampX(max_x_w,      hb.min_x,      hb.max_x);
+            output_map_config.boundaries.min_y      = clampX(min_y_w,      hb.min_y,      hb.max_y);
+            output_map_config.boundaries.max_y      = clampX(max_y_w,      hb.min_y,      hb.max_y);
+            output_map_config.boundaries.min_height = clampX(min_height_w, hb.min_height, hb.max_height);
+            output_map_config.boundaries.max_height = clampX(max_height_w, hb.min_height, hb.max_height);
         }
     }
     auto output_map = std::make_unique<Map3DImpl>(output_map_config);
@@ -126,9 +138,14 @@ SimulationRunFactory::create(const types::SimulationConfigData& simulation,
     std::filesystem::create_directories(run_dir);
     const auto output_map_file = run_dir / "output_map.npy";
 
-    // Components
+    // Components — initial drone position is in map-local coords; add map_offset for world coords.
+    const Position3D world_start{
+        simulation.initial_drone_position.x + simulation.map_offset.x,
+        simulation.initial_drone_position.y + simulation.map_offset.y,
+        simulation.initial_drone_position.z + simulation.map_offset.z,
+    };
     auto gps = std::make_unique<MockGPS>(
-        simulation.initial_drone_position,
+        world_start,
         Orientation{simulation.initial_angle, 0.0 * altitude_angle[deg]},
         mission.gps_resolution);
 
