@@ -1,0 +1,5 @@
+drone_config:
+  dimensions_cm: 8
+  max_rotate_deg: 90
+  max_advance_cm: 30
+  max_elevate_cm: 20

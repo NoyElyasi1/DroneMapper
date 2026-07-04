@@ -1,0 +1,3 @@
+[ConfigParser] Cannot open drone config: sample/drone_config.txt (using defaults)
+[ConfigParser] Cannot open mission config: sample/mission_config.txt (using defaults)
+[SparseBuildingMap] Cannot open: sample/map_input.txt

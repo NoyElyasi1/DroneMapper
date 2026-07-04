@@ -1,8 +1,126 @@
-# DroneMapper
+# DroneMapper — Exercise 2
 
 ## Contributors
 - **Roni Hagai** — 324207257
 - **Noy Elyasi** — 315659201
+
+## External Libraries (Approved)
+- **mp-units** — compile-time physical units (distances in cm, angles in degrees). Prevents unit-mismatch bugs.
+- **yaml-cpp** — YAML configuration file parsing.
+- **TinyNPY** — NumPy `.npy` file reading/writing for 3-D voxel maps.
+- **GTest / GMock** — unit and component testing framework (test binary only).
+
+## Build Requirements
+
+Requires **g++-12** or later (gcc 11 has a known compiler bug with the `mp-units` dependency).
+Requires vcpkg with `VCPKG_ROOT` set.
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset default
+cmake --build build
+```
+
+This produces three binaries under `build/`:
+| Binary | Purpose |
+|---|---|
+| `drone_mapper_simulation` | Main simulator — runs YAML-based composition |
+| `maps_comparison` | Standalone map scorer |
+| `drone_mapper_simulation_test` | GTest test suite (114 tests) |
+
+## Running the Simulator
+
+```bash
+./build/drone_mapper_simulation [<composition_file>] [<output_path>]
+```
+
+- `composition_file` (optional): path to a `sim_compose.yaml` file.  
+  Defaults to `simulation.yaml` in the current working directory.
+- `output_path` (optional): directory for output files.  
+  Defaults to the current working directory.
+
+### Sample scenarios
+Three self-contained scenarios are provided:
+
+| Folder | Map | Scenario |
+|---|---|---|
+| `sample1/` | `scenario_small` (20×20×20 voxels) | Outdoor open-space flight |
+| `sample2/` | `scenario_big` (30×30×30 voxels) | Confined interior room |
+| `sample3/` | `scenario_house` (29×30×31 voxels, height_offset=150 cm) | Multi-floor building — lower floor |
+
+Run any sample:
+```bash
+./build/drone_mapper_simulation sample1/sim_compose.yaml sample1
+```
+
+Original outputs (from our run) are preserved in `sampleX/original_output/`.
+
+## Input File Format
+
+Each composition file (`sim_compose.yaml`) references:
+
+```
+sim_compose.yaml              ← top-level composition
+simulation.yaml               ← map file, initial drone position, map offset
+mission.yaml                  ← max_steps, exploration boundaries, GPS resolution
+drone.yaml                    ← drone dimensions, max_rotate/advance/elevate
+lidar.yaml                    ← z_min, z_max, d (circle spacing), fov_circles
+map/<name>.npy                ← 3-D NumPy int8 array (0=Empty, 1=Occupied)
+```
+
+### simulation.yaml fields
+| Field | Meaning |
+|---|---|
+| `map_filename` | Path to `.npy` map (relative to this yaml's directory) |
+| `map_resolution_cm` | Voxel size in cm |
+| `initial_drone_position` | `x_cm`, `y_cm`, `height_cm` — in **map-local** coordinates |
+| `initial_angle_deg` | Starting heading (0=east, 90=south) |
+| `map_axes_offset` | `x_offset`, `y_offset`, `height_offset` — shifts map origin to world coords |
+
+> **Note:** `initial_drone_position` and mission `boundaries` are in map-local coordinates. The `map_axes_offset` is added internally to convert them to world coordinates.
+
+### mission.yaml fields
+| Field | Meaning |
+|---|---|
+| `max_steps` | Maximum number of drone steps |
+| `boundaries` | Exploration volume in map-local cm (`x_boundary`, `y_boundary`, `height_boundary`) |
+| `gps_resolution_cm` | GPS measurement precision |
+| `output_mapping_resolution_factor` | Output voxel size multiplier (≥1, default 1) |
+
+## Output File Format
+
+All output is written to `<output_path>/`:
+
+```
+<output_path>/
+  simulation_output.yaml       ← hierarchical score report
+  output_results/
+    errors.log                 ← error log (empty on success)
+    <map>_ms<N>_d<R>_fovc<F>/
+      output_map.npy           ← drone's occupancy map (NumPy int8 3-D array)
+```
+
+### output_map.npy
+- Shape: `[szX, szY, szZ]` derived from mission boundaries and resolution
+- Values: `0` = Empty (explored, no obstacle), `1` = Occupied (wall/obstacle detected), `-1` = Unmapped (not visited)
+
+### simulation_output.yaml
+Reports per-run score (0–100), status (`completed` / `max_steps` / `error`), and step count.
+
+## Running the Tests
+
+```bash
+./build/drone_mapper_simulation_test                         # all 114 tests
+./build/drone_mapper_simulation_test --gtest_filter=Integration.*
+./build/drone_mapper_simulation_test --gtest_filter=MockLidar.*
+./build/drone_mapper_simulation_test --gtest_filter=MappingAlgorithm.*
+./build/drone_mapper_simulation_test --gtest_filter=DroneControl.*
+./build/drone_mapper_simulation_test --gtest_filter=MissionsControl.*
+./build/drone_mapper_simulation_test --gtest_filter=SimulationRun.*
+./build/drone_mapper_simulation_test --gtest_filter=SimulationManager.*
+./build/drone_mapper_simulation_test --gtest_filter=MapsComparison.*
+```
+
 
 ## Build Requirements
 
